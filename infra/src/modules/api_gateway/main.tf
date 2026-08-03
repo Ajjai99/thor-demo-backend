@@ -1,3 +1,14 @@
+terraform {
+  required_version = ">= 1.15"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+  }
+}
+
 # Only one target NLB is supported per VPC Link on a REST API (AWS limit — target_arns takes a list but rejects more than one).
 resource "aws_api_gateway_vpc_link" "this" {
   name        = "${var.service_name}-${var.environment}-vpclink"

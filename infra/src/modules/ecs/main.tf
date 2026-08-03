@@ -1,3 +1,14 @@
+terraform {
+  required_version = ">= 1.15"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+  }
+}
+
 data "aws_region" "current" {}
 
 # Gates services.tf/nlb.tf/security_groups.tf/iam.tf — this cluster, the namespace below, and the ECR repos in ecr.tf stay unconditional since they don't need a container image to exist.
