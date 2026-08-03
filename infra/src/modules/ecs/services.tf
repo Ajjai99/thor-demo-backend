@@ -140,8 +140,12 @@ resource "aws_ecs_service" "this" {
   }
 
   # CI/CD updates task_definition/desired_count on every deploy, and native blue/green swaps which target group is primary between deployments — Terraform must not fight either.
+  # tags/tags_all: same Cloud Custodian-vs-SCP conflict already hit on the
+  # ECS cluster (main.tf) — Custodian auto-tags this service after creation
+  # (Owner, c7n-created-by, etc.), and an org SCP explicitly blocks
+  # ecs:UntagResource, so Terraform can never reconcile those tags away.
   lifecycle {
-    ignore_changes = [task_definition, desired_count, load_balancer]
+    ignore_changes = [task_definition, desired_count, load_balancer, tags, tags_all]
   }
 
   # Depends on all instances of aws_lb_listener.production, which is zero for services with no listener — no conditional needed.
