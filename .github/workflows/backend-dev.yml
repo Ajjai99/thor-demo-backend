@@ -17,8 +17,9 @@ name: _backend-dev
 # Environment just to build and scan a PR.
 #
 # Requires a `dev` GitHub Environment with an AWS_ROLE_ARN variable set
-# (from scripts/create-deploy-role.sh dev). No required reviewers on dev —
-# it's the one fully-automatic stage.
+# (from scripts/create-shared-role.sh — one shared role/ARN across every
+# environment now). No required reviewers on dev — it's the one
+# fully-automatic stage.
 
 on:
   workflow_call:

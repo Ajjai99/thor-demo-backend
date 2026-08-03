@@ -12,8 +12,10 @@ name: _backend-prod
 # extraction of what the old shared backend-core.yml already did for prod.
 #
 # Requires a `prod` GitHub Environment with an AWS_ROLE_ARN variable set
-# (from scripts/create-deploy-role.sh prod) and an UPSTREAM_ACCOUNT_ID
-# variable (qa's account ID - a different account, no safe default).
+# (from scripts/create-shared-role.sh — one shared role/ARN across every
+# environment now) and an UPSTREAM_ACCOUNT_ID variable (qa's account ID —
+# today the same account dev/qa already share, until prod gets a real,
+# separate account of its own).
 #
 # image_tag is only ever set by a manual workflow_dispatch rollback/redeploy
 # now - the normal push trigger leaves it blank, and "Resolve tag to

@@ -12,8 +12,9 @@ name: _backend-qa
 #     something to pull.
 #
 # Two GitHub Environments, both needing the SAME AWS_ROLE_ARN variable
-# (create-deploy-role.sh qa's output) plus an UPSTREAM_ACCOUNT_ID variable
-# (dev's account ID):
+# (scripts/create-shared-role.sh's output — one shared role/ARN across
+# every environment now) plus an UPSTREAM_ACCOUNT_ID variable (dev's
+# account ID):
 #   qa-candidate  - unprotected, no required reviewers. The `deploy` job
 #     runs here so the candidate can deploy and be tested automatically,
 #     with nothing to approve yet. Also needs an API_BASE_URL variable -
@@ -29,9 +30,9 @@ name: _backend-qa
 # to whichever service just redeployed reach the new candidate automatically
 # (the client-alias DNS name is stable across revisions).
 #
-# create-deploy-role.sh's trust policy must include BOTH
-# environment:qa-candidate and environment:qa as trusted subjects - one IAM
-# role, two GitHub Environment names.
+# The shared role's trust policy already includes both environment:qa-candidate
+# and environment:qa (and every other environment across both repos) as
+# trusted subjects — see scripts/create-shared-role.sh.
 #
 # image_tag is only ever set by a manual workflow_dispatch rollback/redeploy
 # now - the normal push trigger leaves it blank, and "Resolve tag to

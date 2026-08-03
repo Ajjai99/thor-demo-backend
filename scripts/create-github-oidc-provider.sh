@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Creates the GitHub Actions OIDC identity provider in the current AWS
 # account, idempotently. Run this once per AWS account before any
-# create-deploy-role.sh call in that account — dev and qa share one account
-# (run once), prod is separate (run once there too).
+# create-shared-role.sh call in that account — dev, qa, and (for now) prod
+# all share one account, so in practice this only needs running once.
 #
 # This is intentionally a script, not Terraform: GitHub Actions needs this
 # role to exist before it can authenticate to AWS at all, so it can't depend
