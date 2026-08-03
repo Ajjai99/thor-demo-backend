@@ -1,0 +1,55 @@
+output "cluster_id" {
+  value = aws_ecs_cluster.this.id
+}
+
+output "cluster_name" {
+  value = aws_ecs_cluster.this.name
+}
+
+output "service_connect_namespace_name" {
+  value = aws_service_discovery_http_namespace.this.name
+}
+
+output "service_names" {
+  value = { for k, v in aws_ecs_service.this : k => v.name }
+}
+
+output "service_arns" {
+  description = "Map of service name -> ECS service ARN, for scoping the GitHub Actions deploy role's ecs:UpdateService permission"
+  value       = { for k, v in aws_ecs_service.this : k => v.id }
+}
+
+output "target_group_arns" {
+  description = "Map of service name -> blue/primary target group ARN, only populated for publicly-exposed services"
+  value       = { for k, v in aws_lb_target_group.this : k => v.arn }
+}
+
+output "nlb_arns" {
+  description = "Map of service name -> NLB ARN, only populated for publicly-exposed services — for a future API Gateway VPC Link to target"
+  value       = { for k, v in aws_lb.this : k => v.arn }
+}
+
+output "nlb_dns_names" {
+  value = { for k, v in aws_lb.this : k => v.dns_name }
+}
+
+output "service_security_group_ids" {
+  value = { for k, v in aws_security_group.service : k => v.id }
+}
+
+output "task_execution_role_arns" {
+  value = { for k, v in aws_iam_role.execution : k => v.arn }
+}
+
+output "task_role_arns" {
+  value = { for k, v in aws_iam_role.task : k => v.arn }
+}
+
+output "ecr_repository_urls" {
+  description = "Map of service name -> ECR repository URL, e.g. for CI to know where to push images. Populated regardless of enable_compute."
+  value       = { for k, v in aws_ecr_repository.this : k => v.repository_url }
+}
+
+output "ecr_repository_arns" {
+  value = { for k, v in aws_ecr_repository.this : k => v.arn }
+}

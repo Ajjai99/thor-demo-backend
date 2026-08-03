@@ -1,0 +1,123 @@
+locals {
+  public_services = { for k, v in local.active_services : k => v if v.expose_publicly }
+}
+
+# Blue/primary target group. Green (below) and the production listener exist
+# unconditionally for every publicly-exposed service once it's on, regardless
+# of the service's current deployment_strategy — toggling ROLLING <-> BLUE_GREEN
+# is meant to be a per-deploy choice (deployment_strategy_plan.md), not
+# something that tears down and recreates load balancer infrastructure.
+resource "aws_lb_target_group" "this" {
+  for_each = local.public_services
+
+  name        = local.name_prefix[each.key]
+  port        = each.value.container_port
+  protocol    = "TCP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+
+  health_check {
+    protocol            = "HTTP"
+    path                = each.value.health_check_path
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+    interval            = 30
+  }
+
+  tags = var.tags
+}
+
+resource "aws_lb_target_group" "green" {
+  for_each = local.public_services
+
+  name        = "${local.name_prefix[each.key]}-green"
+  port        = each.value.container_port
+  protocol    = "TCP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+
+  health_check {
+    protocol            = "HTTP"
+    path                = each.value.health_check_path
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+    interval            = 30
+  }
+
+  tags = var.tags
+}
+
+# Internal — reached via VPC Link from API Gateway (see the architecture doc), not directly from the internet.
+resource "aws_lb" "this" {
+  for_each = local.public_services
+
+  name               = local.name_prefix[each.key]
+  load_balancer_type = "network"
+  internal           = true
+  subnets            = var.private_subnet_ids
+
+  tags = merge(var.tags, {
+    Name = "${local.name_prefix[each.key]}-nlb"
+  })
+}
+
+# ECS modifies this listener's default_action directly during a blue/green deployment, so its own state must not fight that.
+resource "aws_lb_listener" "production" {
+  for_each = local.public_services
+
+  load_balancer_arn = aws_lb.this[each.key].arn
+  port               = each.value.nlb_listener_port
+  protocol           = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.this[each.key].arn
+  }
+
+  lifecycle {
+    ignore_changes = [default_action]
+  }
+
+  tags = var.tags
+}
+
+# Trusted by ecs.amazonaws.com (the ECS control plane modifying the listener), not ecs-tasks.amazonaws.com like the execution/task roles in iam.tf.
+data "aws_iam_policy_document" "ecs_service_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ecs.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "blue_green" {
+  for_each = local.public_services
+
+  name               = "${local.name_prefix[each.key]}-bluegreen"
+  assume_role_policy = data.aws_iam_policy_document.ecs_service_assume.json
+  tags               = var.tags
+}
+
+data "aws_iam_policy_document" "blue_green_permissions" {
+  for_each = local.public_services
+
+  statement {
+    actions = [
+      "elasticloadbalancing:DescribeTargetGroups",
+      "elasticloadbalancing:DescribeListeners",
+      "elasticloadbalancing:ModifyListener",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "blue_green" {
+  for_each = local.public_services
+
+  name   = "blue-green-lb-access"
+  role   = aws_iam_role.blue_green[each.key].id
+  policy = data.aws_iam_policy_document.blue_green_permissions[each.key].json
+}
