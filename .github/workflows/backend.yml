@@ -51,6 +51,15 @@ on:
         required: false
         type: string
 
+# id-token: write is never granted by default — it has to be explicitly
+# declared at every hop of a reusable-workflow chain, not just the leaf
+# workflow that actually assumes an AWS role via OIDC. Missing here (or in
+# backend-dispatch.yml) caps every downstream backend-dev/qa/prod.yml call
+# down to id-token: none regardless of what they themselves declare.
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   detect-changes:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
