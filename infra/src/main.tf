@@ -1,5 +1,15 @@
 # Root module composing every infra component for one environment into a single Terraform state, one per environment via Terragrunt.
 
+# required_providers deliberately isn't declared here — Terragrunt's own
+# generate block (root.hcl) already writes a required_providers block into
+# this same directory via its generated provider.tf, and Terraform rejects
+# two required_providers blocks in one module. required_version alone is
+# what tflint actually flags as missing for this file anyway (root main.tf
+# only composes module blocks, no direct aws_* resources of its own).
+terraform {
+  required_version = ">= 1.15"
+}
+
 # Disabled via enable_network when this environment borrows dev's VPC instead of creating its own (e.g. qa).
 module "network" {
   count = var.enable_network ? 1 : 0

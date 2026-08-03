@@ -40,6 +40,15 @@ BACKEND_GITHUB_REPO="${GITHUB_REPO:-thor-demo-backend}"
 FRONTEND_GITHUB_REPO="${FRONTEND_GITHUB_REPO:-thor-demo-frontend}"
 export AWS_PROFILE="${2:-${AWS_PROFILE:-default}}"
 
+# GitHub's immutable subject-claim IDs (org@orgId/repo@repoId, not the
+# mutable name-only form) — org/repo names can be renamed or reclaimed by
+# someone else after a delete, but these numeric IDs can't be reused, so
+# the trust policy stays correct even through a rename. Same org ID for
+# both repos; each repo has its own ID.
+GITHUB_ORG_ID="73207164"
+BACKEND_GITHUB_REPO_ID="1319058590"
+FRONTEND_GITHUB_REPO_ID="1321100416"
+
 INFRA_ENVIRONMENTS=(dev qa prod)
 
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
@@ -53,24 +62,27 @@ if ! aws iam get-open-id-connect-provider --open-id-connect-provider-arn "${OIDC
   exit 1
 fi
 
+BACKEND_REPO_SLUG="${GITHUB_ORG}@${GITHUB_ORG_ID}/${BACKEND_GITHUB_REPO}@${BACKEND_GITHUB_REPO_ID}"
+FRONTEND_REPO_SLUG="${GITHUB_ORG}@${GITHUB_ORG_ID}/${FRONTEND_GITHUB_REPO}@${FRONTEND_GITHUB_REPO_ID}"
+
 SUB_JSON="$(
   {
     # Backend app-deploy environments (backend.yml / backend-dispatch.yml).
-    printf '%s\n' "repo:${GITHUB_ORG}/${BACKEND_GITHUB_REPO}:environment:dev"
-    printf '%s\n' "repo:${GITHUB_ORG}/${BACKEND_GITHUB_REPO}:environment:qa-candidate"
-    printf '%s\n' "repo:${GITHUB_ORG}/${BACKEND_GITHUB_REPO}:environment:qa"
-    printf '%s\n' "repo:${GITHUB_ORG}/${BACKEND_GITHUB_REPO}:environment:prod"
+    printf '%s\n' "repo:${BACKEND_REPO_SLUG}:environment:dev"
+    printf '%s\n' "repo:${BACKEND_REPO_SLUG}:environment:qa-candidate"
+    printf '%s\n' "repo:${BACKEND_REPO_SLUG}:environment:qa"
+    printf '%s\n' "repo:${BACKEND_REPO_SLUG}:environment:prod"
 
     # Backend Terraform environments (infra.yml), both plan and apply, per environment.
     for env in "${INFRA_ENVIRONMENTS[@]}"; do
-      printf '%s\n' "repo:${GITHUB_ORG}/${BACKEND_GITHUB_REPO}:environment:${env}-infra"
-      printf '%s\n' "repo:${GITHUB_ORG}/${BACKEND_GITHUB_REPO}:environment:${env}-infra-plan"
+      printf '%s\n' "repo:${BACKEND_REPO_SLUG}:environment:${env}-infra"
+      printf '%s\n' "repo:${BACKEND_REPO_SLUG}:environment:${env}-infra-plan"
     done
 
     # Frontend app-deploy environments (deploy.yml) — no candidate split, no infra pipeline.
-    printf '%s\n' "repo:${GITHUB_ORG}/${FRONTEND_GITHUB_REPO}:environment:dev"
-    printf '%s\n' "repo:${GITHUB_ORG}/${FRONTEND_GITHUB_REPO}:environment:qa"
-    printf '%s\n' "repo:${GITHUB_ORG}/${FRONTEND_GITHUB_REPO}:environment:prod"
+    printf '%s\n' "repo:${FRONTEND_REPO_SLUG}:environment:dev"
+    printf '%s\n' "repo:${FRONTEND_REPO_SLUG}:environment:qa"
+    printf '%s\n' "repo:${FRONTEND_REPO_SLUG}:environment:prod"
   } | jq -R . | jq -s .
 )"
 
