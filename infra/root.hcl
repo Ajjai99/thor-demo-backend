@@ -4,17 +4,17 @@ locals {
   account_map = {
     dev = {
       account_name = "dev" # Account A, shared with qa
-      account_id = "877969058937"
+      account_id   = "877969058937"
       aws_region   = "us-east-1"
     }
     qa = {
       account_name = "qa" # Account A, shared with dev
-      account_id = "877969058937"
+      account_id   = "877969058937"
       aws_region   = "us-east-1"
     }
     prod = {
       account_name = "prod" # Account B, isolated from dev/qa
-      account_id = ""
+      account_id   = ""
       aws_region   = "us-east-1"
     }
   }
