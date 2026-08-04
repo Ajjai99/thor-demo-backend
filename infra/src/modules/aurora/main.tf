@@ -28,7 +28,7 @@ resource "aws_db_subnet_group" "aurora_subnet_group" {
 # No inline ingress — kept in a separate aws_vpc_security_group_ingress_rule below, same reasoning as modules/ecs/security_groups.tf (avoids the same Terraform dependency-cycle risk).
 resource "aws_security_group" "aurora_security_group" {
   name        = "${local.name_prefix}-sg"
-  description = "Aurora PostgreSQL — ingress from task-api only, egress scoped to the VPC"
+  description = "Aurora PostgreSQL - ingress from task-api only, egress scoped to the VPC"
   vpc_id      = var.vpc_id
 
   egress {
