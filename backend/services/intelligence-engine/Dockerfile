@@ -1,6 +1,6 @@
-FROM python:3.13-slim
-# python:slim doesn't include curl by default — installed explicitly since the ECS container healthCheck in modules/ecs/services.tf depends on it being on PATH.
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+FROM python:3.13-alpine
+# Debian-based slim/bookworm both carried 20+ CRITICAL/HIGH CVEs in base OS packages (perl, ncurses, util-linux, zlib, libssh2) unrelated to this app, unfixed on either release per Trivy. Alpine's base scans clean (0 CRITICAL/HIGH) since it doesn't ship that package set.
+RUN apk add --no-cache curl
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
