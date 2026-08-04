@@ -79,4 +79,31 @@ module "api_gateway" {
   tags = var.tags
 }
 
-# Aurora Postgres (RDS Proxy) + Neptune, owned by task-api, are planned separately as their own module blocks here.
+# task-api's database. Always instantiated, same reasoning as module.ecs's
+# cluster/namespace/ECR repos — a database shouldn't require application
+# compute to exist first, and standing it up early lets migrations/seeding
+# happen before enable_compute ever turns on. task_api_security_group_id is
+# null until enable_compute creates task-api's own security group; the
+# module's ingress rule is skipped entirely until then, not an error.
+module "aurora" {
+  source = "./modules/aurora"
+
+  environment                = var.environment
+  vpc_id                     = local.vpc_id
+  vpc_cidr                   = local.vpc_cidr_effective
+  private_subnet_ids         = local.private_subnet_ids
+  task_api_security_group_id = var.enable_compute ? module.ecs.service_security_group_ids["task-api"] : null
+
+  database_name         = var.aurora_database_name
+  master_username       = var.aurora_master_username
+  engine_version        = var.aurora_engine_version
+  min_capacity          = var.aurora_min_capacity
+  max_capacity          = var.aurora_max_capacity
+  backup_retention_days = var.aurora_backup_retention_days
+  deletion_protection   = var.aurora_deletion_protection
+  skip_final_snapshot   = var.aurora_skip_final_snapshot
+
+  tags = var.tags
+}
+
+# RDS Proxy and Neptune remain future work — see this repo's CI/CD memory for why they're deliberately excluded from this pass.

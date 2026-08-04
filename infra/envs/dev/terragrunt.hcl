@@ -84,5 +84,16 @@ inputs = {
   enable_frontend      = true
   frontend_price_class = "PriceClass_100"
 
+  # --- database (Aurora PostgreSQL, task-api's) ---
+  # Low capacity + no deletion protection — dev is throwaway, cost-optimized.
+  aurora_database_name         = "thor_dev_db"
+  aurora_master_username       = "thor_admin"
+  aurora_engine_version        = "16.13"
+  aurora_min_capacity          = 0.5
+  aurora_max_capacity          = 1
+  aurora_backup_retention_days = 7
+  aurora_deletion_protection   = false
+  aurora_skip_final_snapshot   = true
+
   tags = {}
 }
