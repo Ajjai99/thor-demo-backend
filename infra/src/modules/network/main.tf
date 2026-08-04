@@ -98,9 +98,7 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# No NAT Gateway route here by design — private subnets reach AWS services only
-# through VPC endpoints below, consistent with the platform's VPC-endpoint-only
-# egress model (no NAT Gateway egress).
+# No NAT Gateway route here by design — private subnets reach AWS services only through the VPC endpoints below.
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.this.id
 

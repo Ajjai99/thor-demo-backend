@@ -2,11 +2,7 @@ locals {
   public_services = { for k, v in local.active_services : k => v if v.expose_publicly }
 }
 
-# Blue/primary target group. Green (below) and the production listener exist
-# unconditionally for every publicly-exposed service once it's on, regardless
-# of the service's current deployment_strategy — toggling ROLLING <-> BLUE_GREEN
-# is meant to be a per-deploy choice (deployment_strategy_plan.md), not
-# something that tears down and recreates load balancer infrastructure.
+# Blue/primary target group. Green (below) and the production listener exist unconditionally for every publicly-exposed service regardless of its current deployment_strategy — toggling ROLLING <-> BLUE_GREEN is a per-deploy choice, not something that should tear down load balancer infrastructure.
 resource "aws_lb_target_group" "this" {
   for_each = local.public_services
 
@@ -66,8 +62,8 @@ resource "aws_lb_listener" "production" {
   for_each = local.public_services
 
   load_balancer_arn = aws_lb.this[each.key].arn
-  port               = each.value.nlb_listener_port
-  protocol           = "TCP"
+  port              = each.value.nlb_listener_port
+  protocol          = "TCP"
 
   default_action {
     type             = "forward"

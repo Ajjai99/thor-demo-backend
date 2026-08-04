@@ -25,11 +25,7 @@ resource "aws_db_subnet_group" "aurora_subnet_group" {
   })
 }
 
-# No inline ingress — kept in a separate aws_vpc_security_group_ingress_rule
-# below, same reasoning already established in modules/ecs/security_groups.tf
-# (an inline ingress block referencing another resource's security group ID
-# risks the same class of Terraform dependency issue if this module ever
-# grows more than one security-group-bearing resource).
+# No inline ingress — kept in a separate aws_vpc_security_group_ingress_rule below, same reasoning as modules/ecs/security_groups.tf (avoids the same Terraform dependency-cycle risk).
 resource "aws_security_group" "aurora_security_group" {
   name        = "${local.name_prefix}-sg"
   description = "Aurora PostgreSQL — ingress from task-api only, egress scoped to the VPC"
@@ -48,16 +44,7 @@ resource "aws_security_group" "aurora_security_group" {
   })
 }
 
-# Conditional because the cluster must be creatable independently of
-# enable_compute — task-api's own security group doesn't exist until
-# enable_compute = true creates the ECS services, so this rule simply
-# doesn't exist yet on a database-only apply. See variables.tf.
-#
-# Gated on create_task_api_ingress (a plain bool), NOT on
-# `task_api_security_group_id != null` — that value comes from a security
-# group this same apply can still be creating/replacing, so a null-check on
-# it isn't knowable until apply and breaks count with "Invalid count
-# argument" the moment that security group actually changes.
+# Gated on create_task_api_ingress (a plain bool, = var.enable_compute), not a null-check on task_api_security_group_id — that value can be unknown mid-apply (still-changing security group), which breaks count's plan-time-known requirement; a plain bool doesn't.
 resource "aws_vpc_security_group_ingress_rule" "task_api" {
   count = var.create_task_api_ingress ? 1 : 0
 
@@ -73,11 +60,7 @@ resource "aws_vpc_security_group_ingress_rule" "task_api" {
   })
 }
 
-# manage_master_user_password: AWS generates and rotates the password in
-# Secrets Manager — it's never set here, never touches Terraform state.
-# enable_http_endpoint: RDS Data API, so a GitHub-hosted CI runner (no VPC
-# network path into a private subnet) can reach this database over a plain
-# authenticated HTTPS API call instead of a raw Postgres connection.
+# manage_master_user_password: AWS-generated/rotated in Secrets Manager, never touches Terraform state. enable_http_endpoint: RDS Data API, so a GitHub-hosted CI runner can reach this without VPC network access.
 resource "aws_rds_cluster" "aurora_cluster" {
   cluster_identifier     = local.name_prefix
   engine                 = "aurora-postgresql"
@@ -106,9 +89,7 @@ resource "aws_rds_cluster" "aurora_cluster" {
   })
 }
 
-# Serverless v2 still requires at least one instance resource even though
-# capacity itself is elastic — this is what actually runs, the cluster
-# resource above is just the control plane / storage layer.
+# Serverless v2 still requires at least one instance resource even though capacity itself is elastic — this is what actually runs, the cluster above is just the control plane/storage layer.
 resource "aws_rds_cluster_instance" "aurora_instance" {
   identifier         = "${local.name_prefix}-instance"
   cluster_identifier = aws_rds_cluster.aurora_cluster.id

@@ -28,14 +28,7 @@ resource "aws_ecs_cluster" "this" {
     Name = "thor-${var.environment}-cluster"
   })
 
-  # This AWS Organization runs Cloud Custodian, which auto-tags resources
-  # with Owner/c7n-created-by/c7n-created-by-id/c7n-created-date shortly
-  # after creation — an SCP explicitly blocks ecs:UntagResource so those
-  # compliance tags can't be stripped back off. Terraform doesn't know
-  # about them and would otherwise try to reconcile them away every apply,
-  # which the SCP then denies. Ignoring tags/tags_all here stops Terraform
-  # from fighting Custodian instead of trying to declare tags that are
-  # dynamic per-resource values anyway.
+  # This org's Cloud Custodian auto-tags resources (Owner/c7n-created-*) after creation, and an SCP blocks ecs:UntagResource from stripping them back off, so Terraform must ignore tags here instead of fighting Custodian every apply.
   lifecycle {
     ignore_changes = [tags, tags_all]
   }
