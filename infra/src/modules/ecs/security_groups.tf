@@ -12,15 +12,22 @@ resource "aws_security_group" "service" {
   for_each = local.active_services
 
   name        = "${local.name_prefix[each.key]}-service-sg"
-  description = each.value.expose_publicly ? "ECS service ingress from within the VPC (NLB target, NLB has no SG), egress scoped to the VPC" : "ECS service ingress restricted to public-facing peer services only, egress scoped to the VPC"
+  description = each.value.expose_publicly ? "ECS service ingress from within the VPC (NLB target, NLB has no SG), egress open (no NAT/IGW route today, so this only reaches the VPC + endpoints in practice)" : "ECS service ingress restricted to public-facing peer services only, egress open (no NAT/IGW route today, so this only reaches the VPC + endpoints in practice)"
   vpc_id      = var.vpc_id
 
+  # cidr_blocks is 0.0.0.0/0, not var.vpc_cidr — but this VPC has no NAT
+  # Gateway or IGW route for private subnets, so egress still can't actually
+  # reach the public internet; this only widens the *boundary*, not what's
+  # reachable today. Deliberately wide instead of VPC-scoped so it doesn't
+  # need to be revisited the day a NAT Gateway gets added — but that also
+  # means adding a NAT Gateway would then grant these tasks full internet
+  # egress immediately, with no separate decision at that point.
   egress {
-    description = "Within VPC only (endpoints, future DB security-group chaining)"
+    description = "All traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = [var.vpc_cidr]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = merge(var.tags, {
