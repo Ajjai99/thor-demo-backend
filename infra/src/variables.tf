@@ -80,19 +80,19 @@ variable "services" {
   type = map(object({
     container_image       = optional(string, "")
     container_port        = optional(number, 8080)
-    cpu                    = optional(number, 512)
-    memory                 = optional(number, 1024)
-    desired_count          = optional(number, 2)
-    min_healthy_percent    = optional(number, 100)
-    max_percent            = optional(number, 200)
-    health_check_path      = optional(string, "/health")
-    log_retention_days     = optional(number, 30)
-    environment_variables  = optional(map(string), {})
-    secrets                = optional(map(string), {})
-    expose_publicly        = optional(bool, false)
-    nlb_listener_port      = optional(number, 80)
-    deployment_strategy    = optional(string, "ROLLING")
-    bake_time_in_minutes   = optional(number, 5)
+    cpu                   = optional(number, 512)
+    memory                = optional(number, 1024)
+    desired_count         = optional(number, 2)
+    min_healthy_percent   = optional(number, 100)
+    max_percent           = optional(number, 200)
+    health_check_path     = optional(string, "/health")
+    log_retention_days    = optional(number, 30)
+    environment_variables = optional(map(string), {})
+    secrets               = optional(map(string), {})
+    expose_publicly       = optional(bool, false)
+    nlb_listener_port     = optional(number, 80)
+    deployment_strategy   = optional(string, "ROLLING")
+    bake_time_in_minutes  = optional(number, 5)
   }))
 
   default = {
@@ -143,5 +143,58 @@ variable "frontend_price_class" {
   default     = "PriceClass_100"
 }
 
-# storage / db / event-driven variables get added here as those modules are
+# --- database (Aurora PostgreSQL, module.aurora — task-api's database) ---
+# One cluster per environment, not a map like `services` — RDS Proxy and
+# per-tenant credentials are deliberately out of scope for now, see this
+# repo's Aurora module memory for why.
+
+variable "aurora_database_name" {
+  type        = string
+  default     = ""
+  description = "Initial database name created on the Aurora cluster. \"\" falls back to \"thor_<environment>_db\" (module.aurora computes this)."
+}
+
+variable "aurora_master_username" {
+  type        = string
+  default     = "thor_admin"
+  description = "Master username — the password itself is AWS-managed (Secrets Manager), never set here"
+}
+
+variable "aurora_engine_version" {
+  type        = string
+  default     = "16.13"
+  description = "Aurora PostgreSQL engine version — must be >= 16.1 for RDS Data API support"
+}
+
+variable "aurora_min_capacity" {
+  type        = number
+  default     = 0.5
+  description = "Serverless v2 minimum ACU"
+}
+
+variable "aurora_max_capacity" {
+  type        = number
+  default     = 1
+  description = "Serverless v2 maximum ACU"
+}
+
+variable "aurora_backup_retention_days" {
+  type        = number
+  default     = 7
+  description = "Automated backup retention period"
+}
+
+variable "aurora_deletion_protection" {
+  type        = bool
+  default     = false
+  description = "Should be true for prod, false for throwaway dev/qa environments"
+}
+
+variable "aurora_skip_final_snapshot" {
+  type        = bool
+  default     = true
+  description = "Should be false for prod, true for throwaway dev/qa environments"
+}
+
+# storage / event-driven variables get added here as those modules are
 # wired in below, alongside their own module blocks in main.tf.
