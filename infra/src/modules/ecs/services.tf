@@ -4,7 +4,7 @@ locals {
   # Falls back to that service's own ECR repo at the "latest" tag when container_image is left blank.
   resolved_image = {
     for k, v in local.active_services : k =>
-      v.container_image != "" ? v.container_image : "${aws_ecr_repository.this[k].repository_url}:latest"
+    v.container_image != "" ? v.container_image : "${aws_ecr_repository.this[k].repository_url}:latest"
   }
 }
 
@@ -100,8 +100,8 @@ resource "aws_ecs_service" "this" {
     for_each = each.value.expose_publicly ? [1] : []
     content {
       target_group_arn = aws_lb_target_group.this[each.key].arn
-      container_name    = each.key
-      container_port    = each.value.container_port
+      container_name   = each.key
+      container_port   = each.value.container_port
 
       dynamic "advanced_configuration" {
         for_each = each.value.deployment_strategy == "BLUE_GREEN" ? [1] : []
@@ -139,11 +139,7 @@ resource "aws_ecs_service" "this" {
     }
   }
 
-  # CI/CD updates task_definition/desired_count on every deploy, and native blue/green swaps which target group is primary between deployments — Terraform must not fight either.
-  # tags/tags_all: same Cloud Custodian-vs-SCP conflict already hit on the
-  # ECS cluster (main.tf) — Custodian auto-tags this service after creation
-  # (Owner, c7n-created-by, etc.), and an org SCP explicitly blocks
-  # ecs:UntagResource, so Terraform can never reconcile those tags away.
+  # CI/CD updates task_definition/desired_count, blue/green swaps load_balancer's primary target group, and Custodian-vs-SCP (see main.tf) means tags/tags_all can never be reconciled either — Terraform must ignore all four.
   lifecycle {
     ignore_changes = [task_definition, desired_count, load_balancer, tags, tags_all]
   }

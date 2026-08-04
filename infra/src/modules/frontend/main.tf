@@ -17,8 +17,7 @@ locals {
   bucket_name = "thor-frontend-${var.environment}-${data.aws_caller_identity.current.account_id}"
 }
 
-# Private bucket — no website hosting, no public ACLs. CloudFront reaches it
-# through the origin access control below, never directly.
+# Private bucket — no website hosting, no public ACLs. CloudFront reaches it through the origin access control below, never directly.
 resource "aws_s3_bucket" "this" {
   bucket = local.bucket_name
 
@@ -36,8 +35,7 @@ resource "aws_s3_bucket_public_access_block" "this" {
   restrict_public_buckets = true
 }
 
-# BucketOwnerEnforced — object ACLs are disabled entirely, matching an
-# OAC-fronted bucket where only the bucket policy (not ACLs) grants access.
+# BucketOwnerEnforced — object ACLs are disabled entirely, matching an OAC-fronted bucket where only the bucket policy (not ACLs) grants access.
 resource "aws_s3_bucket_ownership_controls" "this" {
   bucket = aws_s3_bucket.this.id
 
@@ -76,9 +74,7 @@ resource "aws_cloudfront_distribution" "this" {
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
   }
 
-  # SPA client-side routing — any path that isn't a real object in the bucket
-  # (a React Router route, for example) falls back to index.html instead of
-  # surfacing S3's 403/404 to the browser.
+  # SPA client-side routing — any path that isn't a real object in the bucket (a React Router route, for example) falls back to index.html instead of surfacing S3's 403/404 to the browser.
   custom_error_response {
     error_code         = 403
     response_code      = 200
