@@ -1,4 +1,6 @@
 FROM python:3.13-slim
+# python:slim doesn't include curl by default — installed explicitly since the ECS container healthCheck in modules/ecs/services.tf depends on it being on PATH.
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
