@@ -92,6 +92,7 @@ module "aurora" {
   vpc_id                     = local.vpc_id
   vpc_cidr                   = local.vpc_cidr_effective
   private_subnet_ids         = local.private_subnet_ids
+  create_task_api_ingress    = var.enable_compute
   task_api_security_group_id = var.enable_compute ? module.ecs.service_security_group_ids["task-api"] : null
 
   database_name         = var.aurora_database_name

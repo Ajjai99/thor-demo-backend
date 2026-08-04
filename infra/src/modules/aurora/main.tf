@@ -52,8 +52,14 @@ resource "aws_security_group" "aurora_security_group" {
 # enable_compute — task-api's own security group doesn't exist until
 # enable_compute = true creates the ECS services, so this rule simply
 # doesn't exist yet on a database-only apply. See variables.tf.
+#
+# Gated on create_task_api_ingress (a plain bool), NOT on
+# `task_api_security_group_id != null` — that value comes from a security
+# group this same apply can still be creating/replacing, so a null-check on
+# it isn't knowable until apply and breaks count with "Invalid count
+# argument" the moment that security group actually changes.
 resource "aws_vpc_security_group_ingress_rule" "task_api" {
-  count = var.task_api_security_group_id != null ? 1 : 0
+  count = var.create_task_api_ingress ? 1 : 0
 
   security_group_id            = aws_security_group.aurora_security_group.id
   description                  = "PostgreSQL from task-api"
