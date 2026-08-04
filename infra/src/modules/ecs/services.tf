@@ -139,9 +139,10 @@ resource "aws_ecs_service" "this" {
     }
   }
 
-  # CI/CD updates task_definition/desired_count, blue/green swaps load_balancer's primary target group, and Custodian-vs-SCP (see main.tf) means tags/tags_all can never be reconciled either — Terraform must ignore all four.
+  # CI/CD updates task_definition/desired_count, and Custodian-vs-SCP (see main.tf) means tags/tags_all can never be reconciled either — Terraform must ignore both.
+  # load_balancer temporarily NOT ignored: needed for one apply so a deployment_strategy change (e.g. ROLLING -> BLUE_GREEN) can actually push its required advanced_configuration through. Re-add load_balancer here once this apply succeeds, since blue/green's live primary-target-group swap needs it ignored again afterward.
   lifecycle {
-    ignore_changes = [task_definition, desired_count, load_balancer, tags, tags_all]
+    ignore_changes = [task_definition, desired_count, tags, tags_all]
   }
 
   # Depends on all instances of aws_lb_listener.production, which is zero for services with no listener — no conditional needed.
