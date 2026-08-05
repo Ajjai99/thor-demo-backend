@@ -22,7 +22,7 @@ inputs = {
   dev_public_subnet_ids  = []
   dev_private_subnet_ids = []
 
-  # --- compute ---
+  # --- ecs compute ---
   # false until a real image has been pushed to each ECR repo below — the cluster/namespace/repos are created regardless.
   enable_compute            = true
   enable_container_insights = true
