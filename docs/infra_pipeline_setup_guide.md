@@ -7,12 +7,13 @@ applies Terraform/Terragrunt changes under `infra/` for `dev`, `qa`, and
 
 ## Overview
 
-`infra.yml` needs three things in place before it can do anything:
+`infra.yml` needs four things in place before it can do anything:
 
-1. A GitHub OIDC identity provider registered in AWS, so AWS trusts tokens
+1. Each environment's real AWS account ID, filled into `infra/root.hcl`.
+2. A GitHub OIDC identity provider registered in AWS, so AWS trusts tokens
    issued by GitHub Actions.
-2. An IAM role GitHub Actions can assume via that provider.
-3. Six GitHub Environments, each holding that role's ARN.
+3. An IAM role GitHub Actions can assume via that provider.
+4. Six GitHub Environments, each holding that role's ARN.
 
 **File location:** `.github/workflows/infra.yml`
 
@@ -39,7 +40,40 @@ defaults to `us-east-1` if you don't set it.
 > `-infra-apply` environments need their own role/provider pointing at
 > dev's account, distinct from whatever qa/prod use.
 
-## Step 1: Create the OIDC identity provider (AWS Console)
+## Step 1: Configure AWS account IDs (`infra/root.hcl`)
+
+Before touching AWS or GitHub at all, `infra/root.hcl`'s `account_map`
+needs each environment's real AWS account ID:
+
+```hcl
+account_map = {
+  dev = {
+    account_name = "dev"
+    account_id   = "<DEV_ACCOUNT_ID>"
+    aws_region   = "us-east-1"
+  }
+  qa = {
+    account_name = "qa"
+    account_id   = "<QA_ACCOUNT_ID>"
+    aws_region   = "us-east-1"
+  }
+  prod = {
+    account_name = "prod"
+    account_id   = "<PROD_ACCOUNT_ID>"
+    aws_region   = "us-east-1"
+  }
+}
+```
+
+This isn't cosmetic — `account_id` is what builds the S3 state bucket's
+name (`thor-terraform-state-<account_id>`), so a blank or wrong value
+here means `init-terragrunt` can't find (or auto-create) the right
+bucket at all. Today, `dev` and `qa` share one account and `prod`'s
+`account_id` is still blank — fill in whichever ones are real before
+setting up that environment's pipeline. If dev later moves to its own
+account (see the note further down), update `dev`'s entry to match.
+
+## Step 2: Create the OIDC identity provider (AWS Console)
 
 This tells AWS to trust tokens issued by GitHub Actions. Do this once per
 AWS account.
@@ -50,7 +84,7 @@ AWS account.
 4. Audience: `sts.amazonaws.com`
 5. Click **Add provider**
 
-## Step 2: Create the IAM role (AWS Console)
+## Step 3: Create the IAM role (AWS Console)
 
 This is the role GitHub Actions assumes to run Terraform.
 
@@ -104,9 +138,9 @@ Fill in:
    instead, that's a materially larger task (EC2/ECS/ECR/S3/IAM/RDS/ELB/
    API Gateway/service-discovery permissions, plus the S3 state bucket).
 7. Name the role (e.g. `thor-shared-role`) and copy its **ARN** — you'll
-   need it in Step 3.
+   need it in Step 4.
 
-## Step 3: Create the six GitHub Environments (GitHub UI)
+## Step 4: Create the six GitHub Environments (GitHub UI)
 
 Go to **Repo → Settings → Environments → New environment**, once for each
 of the six names in the table above.
@@ -116,7 +150,7 @@ For each one:
 1. **Name it exactly as listed** — it must match the trust policy's `sub`
    claims character-for-character, including the `-infra-plan`/
    `-infra-apply` suffix.
-2. **Add a variable**: `AWS_ROLE_ARN` = the role ARN from Step 2.
+2. **Add a variable**: `AWS_ROLE_ARN` = the role ARN from Step 3.
 3. **Set protection rules**:
    - `*-infra-plan` (all three): **leave unprotected**. Plan is read-only
      and has to actually run before anyone can review its output —
