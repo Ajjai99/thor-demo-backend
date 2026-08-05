@@ -44,14 +44,14 @@ resource "aws_s3_bucket_ownership_controls" "this" {
   }
 }
 
-resource "aws_cloudfront_origin_access_control" "this" {
+resource "aws_cloudfront_origin_access_control" "thor-fe-oac" {
   name                              = local.name_prefix
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
 
-resource "aws_cloudfront_distribution" "this" {
+resource "aws_cloudfront_distribution" "thor-fe-cdn" {
   enabled             = true
   comment             = local.name_prefix
   default_root_object = "index.html"
@@ -60,7 +60,7 @@ resource "aws_cloudfront_distribution" "this" {
   origin {
     domain_name              = aws_s3_bucket.this.bucket_regional_domain_name
     origin_id                = local.bucket_name
-    origin_access_control_id = aws_cloudfront_origin_access_control.this.id
+    origin_access_control_id = aws_cloudfront_origin_access_control.thor-fe-oac.id
   }
 
   default_cache_behavior {
@@ -117,7 +117,7 @@ data "aws_iam_policy_document" "cloudfront_access" {
     condition {
       test     = "StringEquals"
       variable = "AWS:SourceArn"
-      values   = [aws_cloudfront_distribution.this.arn]
+      values   = [aws_cloudfront_distribution.thor-fe-cdn.arn]
     }
   }
 }

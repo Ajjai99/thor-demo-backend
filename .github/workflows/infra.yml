@@ -62,6 +62,9 @@ jobs:
     defaults:
       run:
         working-directory: infra/envs/${{ needs.context.outputs.environment }}
+    # Every later job requires this one to succeed first (needs chain: validate -> lint -> plan -> apply), so the state bucket only ever needs auto-creating here — by the time any later job runs its own implicit init, it already exists.
+    env:
+      TG_NON_INTERACTIVE: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -82,8 +85,9 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       # Fast-fail gate — backend/auth problems surface here before lint/plan spend any time.
+      # -reconfigure: without it, a changed remote_state/provider block in root.hcl fails hard ("Error: Backend configuration changed") instead of picking up the new config — confirmed harmless on a genuinely fresh init too (today's normal case, since every job checks out clean).
       - name: terragrunt init
-        run: terragrunt init -no-color
+        run: terragrunt init -reconfigure -no-color
 
   validate-terragrunt:
     needs: [context, init-terragrunt]
@@ -246,3 +250,50 @@ jobs:
       # Applies the exact plan file plan-terragrunt produced — no -auto-approve needed, applying a saved plan is already non-interactive. If the underlying state changed since that plan was made, this fails with a stale-plan error instead of silently applying something different than what was reviewed.
       - name: terragrunt apply
         run: terragrunt apply -no-color /tmp/tfplan.binary
+
+  seed-ecr-placeholder:
+    needs: [context, apply-terragrunt]
+    # Same source-of-truth pattern as apply-terragrunt's own condition — on a PR run apply-terragrunt is skipped, not successful, so this naturally no-ops there too without needing its own event_name check.
+    if: always() && needs['apply-terragrunt'].result == 'success'
+    runs-on: ubuntu-latest
+    # Same environment apply-terragrunt just used — GitHub only prompts a required reviewer once per (run, environment), not once per job, so this doesn't add a second approval click.
+    environment: ${{ needs.context.outputs.environment }}-infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/ecr-login
+        id: ecr
+        with:
+          role_arn: ${{ vars.AWS_ROLE_ARN }}
+          region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      # --platform linux/amd64: same reasoning as placeholder-image/push.sh — Fargate task definitions default to X86_64, so this stays explicit even though ubuntu-latest runners are already x86_64 today.
+      # Only pushes to a repo that currently has zero images — never overwrites a real, already-deployed :latest just because an unrelated infra change got applied.
+      - name: Seed any empty ECR repo with the placeholder image
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+          ENVIRONMENT: ${{ needs.context.outputs.environment }}
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 -t placeholder placeholder-image/
+
+          for svc in thor task-api intelligence-engine; do
+            REPO="${svc}-${ENVIRONMENT}"
+
+            if ! aws ecr describe-repositories --repository-names "$REPO" --region "$AWS_REGION" >/dev/null 2>&1; then
+              echo "$REPO doesn't exist yet (enable_compute off, or repo not created) — skipping."
+              continue
+            fi
+
+            IMAGE_COUNT=$(aws ecr describe-images --repository-name "$REPO" --region "$AWS_REGION" --query 'length(imageDetails)' --output text 2>/dev/null || echo 0)
+            if [ "$IMAGE_COUNT" != "0" ]; then
+              echo "$REPO already has $IMAGE_COUNT image(s) — leaving it alone."
+              continue
+            fi
+
+            echo "$REPO is empty — pushing placeholder."
+            IMAGE="${REGISTRY}/${REPO}:latest"
+            docker tag placeholder "$IMAGE"
+            docker push "$IMAGE"
+          done

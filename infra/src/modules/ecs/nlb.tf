@@ -3,7 +3,7 @@ locals {
 }
 
 # Blue/primary target group. Green (below) and the production listener exist unconditionally for every publicly-exposed service regardless of its current deployment_strategy — toggling ROLLING <-> BLUE_GREEN is a per-deploy choice, not something that should tear down load balancer infrastructure.
-resource "aws_lb_target_group" "this" {
+resource "aws_lb_target_group" "thor-nlb-tg-blue" {
   for_each = local.public_services
 
   name        = local.name_prefix[each.key]
@@ -23,7 +23,7 @@ resource "aws_lb_target_group" "this" {
   tags = var.tags
 }
 
-resource "aws_lb_target_group" "green" {
+resource "aws_lb_target_group" "thor-nlb-tg-green" {
   for_each = local.public_services
 
   name        = "${local.name_prefix[each.key]}-green"
@@ -44,7 +44,7 @@ resource "aws_lb_target_group" "green" {
 }
 
 # Internal — reached via VPC Link from API Gateway (see the architecture doc), not directly from the internet.
-resource "aws_lb" "this" {
+resource "aws_lb" "thor-nlb" {
   for_each = local.public_services
 
   name               = local.name_prefix[each.key]
@@ -58,16 +58,16 @@ resource "aws_lb" "this" {
 }
 
 # ECS modifies this listener's default_action directly during a blue/green deployment, so its own state must not fight that.
-resource "aws_lb_listener" "production" {
+resource "aws_lb_listener" "thor-nlb-listener" {
   for_each = local.public_services
 
-  load_balancer_arn = aws_lb.this[each.key].arn
+  load_balancer_arn = aws_lb.thor-nlb[each.key].arn
   port              = each.value.nlb_listener_port
   protocol          = "TCP"
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.this[each.key].arn
+    target_group_arn = aws_lb_target_group.thor-nlb-tg-blue[each.key].arn
   }
 
   lifecycle {

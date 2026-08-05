@@ -7,13 +7,13 @@ output "bucket_arn" {
 }
 
 output "distribution_id" {
-  value = aws_cloudfront_distribution.this.id
+  value = aws_cloudfront_distribution.thor-fe-cdn.id
 }
 
 output "distribution_arn" {
-  value = aws_cloudfront_distribution.this.arn
+  value = aws_cloudfront_distribution.thor-fe-cdn.arn
 }
 
 output "distribution_domain_name" {
-  value = aws_cloudfront_distribution.this.domain_name
+  value = aws_cloudfront_distribution.thor-fe-cdn.domain_name
 }
