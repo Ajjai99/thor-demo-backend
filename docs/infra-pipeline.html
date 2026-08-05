@@ -240,7 +240,7 @@
 <header class="hero">
   <p class="eyebrow">thor-backend · CI/CD</p>
   <h1>How the infra pipeline works</h1>
-  <p class="subtitle">One workflow, six jobs, always run in the same order. What changes is which trigger fired — a PR preview, or a real push.</p>
+  <p class="subtitle">One workflow, seven jobs, always run in the same order. What changes is which trigger fired — a PR preview, or a real push.</p>
   <p class="subtitle" style="margin-top: -1.5rem;">Triggers only when a change touches the <code>infra/</code> folder — nothing else wakes this workflow up.</p>
   <span class="file-chip">.github/workflows/infra.yml</span>
 </header>
@@ -271,7 +271,7 @@ flowchart LR
 <section>
   <p class="eyebrow">Diagram 2</p>
   <h2>Push workflow</h2>
-  <p class="lede">A push to dev, qa, or main — which is what a merge actually produces — runs the identical five checks, then applies.</p>
+  <p class="lede">A push to dev, qa, or main — which is what a merge actually produces — runs the identical five checks, then applies, then seeds ECR if needed.</p>
 
   <div class="diagram-panel">
     <pre class="mermaid">
@@ -281,16 +281,17 @@ flowchart LR
     u3 --> u4["lint-terragrunt"]
     u4 --> u5["plan-terragrunt"]
     u5 --> u6["apply-terragrunt"]
+    u6 --> u7["seed-ecr-placeholder"]
 
     classDef preview fill:#f3e1d4,stroke:#c4622a,color:#1a1d24;
     classDef apply fill:#e2e9f3,stroke:#4c6fa6,color:#1a1d24;
     class u1,u2,u3,u4,u5 preview;
-    class u6 apply;
+    class u6,u7 apply;
     </pre>
   </div>
   <div class="legend">
     <span><i class="swatch" style="background:var(--accent)"></i>same five checks as the PR workflow</span>
-    <span><i class="swatch" style="background:var(--apply)"></i>apply — only ever happens here</span>
+    <span><i class="swatch" style="background:var(--apply)"></i>apply, then seed ECR if empty — only ever happens here</span>
   </div>
 
 </section>
@@ -309,7 +310,7 @@ flowchart LR
     <div class="job-card">
       <div class="job-num">2</div>
       <div class="job-name">init-terragrunt</div>
-      <div class="job-desc">Connects to the S3 state backend, downloads providers. Fails fast if credentials or backend access are broken.</div>
+      <div class="job-desc">Connects to the S3 state backend — creating the bucket automatically if it doesn't exist yet — and downloads providers. Fails fast if credentials or backend access are broken.</div>
     </div>
 
     <div class="job-card">
@@ -334,6 +335,12 @@ flowchart LR
       <div class="job-num">6</div>
       <div class="job-name">apply-terragrunt <span class="badge apply">push only</span></div>
       <div class="job-desc">Actually makes the change. Automatic for dev; waits for a required reviewer on qa/prod, if configured.</div>
+    </div>
+
+    <div class="job-card apply">
+      <div class="job-num">7</div>
+      <div class="job-name">seed-ecr-placeholder <span class="badge apply">push only</span></div>
+      <div class="job-desc">If a service's ECR repo has zero images (a fresh environment's first apply), builds and pushes a placeholder image so its ECS service has something to pull. Never touches a repo that already has a real image.</div>
     </div>
   </div>
 </section>
