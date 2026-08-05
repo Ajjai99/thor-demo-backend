@@ -104,6 +104,7 @@ data "aws_iam_policy_document" "blue_green_permissions" {
     actions = [
       "elasticloadbalancing:DescribeTargetGroups",
       "elasticloadbalancing:DescribeListeners",
+      "elasticloadbalancing:DescribeTargetHealth",
       "elasticloadbalancing:ModifyListener",
     ]
     resources = ["*"]
