@@ -1,5 +1,5 @@
 # One repo per service, per environment; unconditional, unlike everything else here, since a repo must exist before enable_compute can be turned on.
-resource "aws_ecr_repository" "this" {
+resource "aws_ecr_repository" "thor-ecr-repo" {
   for_each = var.services
 
   name                 = "${each.key}-${var.environment}"
@@ -16,10 +16,10 @@ resource "aws_ecr_repository" "this" {
   tags = var.tags
 }
 
-resource "aws_ecr_lifecycle_policy" "this" {
+resource "aws_ecr_lifecycle_policy" "thor-ecr-lifecycle" {
   for_each = var.services
 
-  repository = aws_ecr_repository.this[each.key].name
+  repository = aws_ecr_repository.thor-ecr-repo[each.key].name
 
   policy = jsonencode({
     rules = [
@@ -53,7 +53,7 @@ resource "aws_ecr_lifecycle_policy" "this" {
 resource "aws_ecr_repository_policy" "cross_account_pull" {
   for_each = length(var.cross_account_pull_principal_arns) > 0 ? var.services : {}
 
-  repository = aws_ecr_repository.this[each.key].name
+  repository = aws_ecr_repository.thor-ecr-repo[each.key].name
 
   policy = jsonencode({
     Version = "2012-10-17"

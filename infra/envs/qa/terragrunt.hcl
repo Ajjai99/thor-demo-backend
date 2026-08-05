@@ -30,7 +30,7 @@ inputs = {
   dev_public_subnet_ids  = dependency.dev.outputs.public_subnet_ids
   dev_private_subnet_ids = dependency.dev.outputs.private_subnet_ids
 
-  # --- compute ---
+  # --- ecs compute ---
   enable_compute            = false
   enable_container_insights = true
 

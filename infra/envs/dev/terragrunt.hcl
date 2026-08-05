@@ -16,13 +16,7 @@ inputs = {
   private_subnet_cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
   enable_vpc_endpoints = true
 
-  # Inert here — only used when enable_network = false, i.e. an environment borrowing dev's VPC.
-  dev_vpc_id             = null
-  dev_vpc_cidr           = null
-  dev_public_subnet_ids  = []
-  dev_private_subnet_ids = []
-
-  # --- compute ---
+  # --- ecs compute ---
   # false until a real image has been pushed to each ECR repo below — the cluster/namespace/repos are created regardless.
   enable_compute            = true
   enable_container_insights = true

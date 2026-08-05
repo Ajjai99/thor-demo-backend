@@ -16,7 +16,7 @@ locals {
   active_services = var.enable_compute ? var.services : {}
 }
 
-resource "aws_ecs_cluster" "this" {
+resource "aws_ecs_cluster" "thor-ecs-cluster" {
   name = "thor-${var.environment}"
 
   setting {
@@ -35,7 +35,7 @@ resource "aws_ecs_cluster" "this" {
 }
 
 # HTTP namespace, not Route53 private-DNS — Service Connect's Envoy sidecar resolves traffic itself and shares this namespace across every service so they can reach each other by name.
-resource "aws_service_discovery_http_namespace" "this" {
+resource "aws_service_discovery_http_namespace" "thor-sc-namespace" {
   name        = "thor-${var.environment}.local"
   description = "Service Connect namespace for thor-${var.environment}"
   tags        = var.tags
