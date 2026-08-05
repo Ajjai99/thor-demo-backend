@@ -63,8 +63,10 @@ jobs:
       run:
         working-directory: infra/envs/${{ needs.context.outputs.environment }}
     # Every later job requires this one to succeed first (needs chain: validate -> lint -> plan -> apply), so the state bucket only ever needs auto-creating here — by the time any later job runs its own implicit init, it already exists.
+    # TG_BACKEND_BOOTSTRAP: without it, a missing state bucket is a hard failure ("S3 bucket ... does not exist"), not something Terragrunt creates on its own — auto-creation is opt-in in this Terragrunt version, confirmed against a real missing-bucket error, not the default behavior TG_NON_INTERACTIVE alone would imply.
     env:
       TG_NON_INTERACTIVE: "true"
+      TG_BACKEND_BOOTSTRAP: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -217,7 +219,7 @@ jobs:
     # Explicit always() + a manual plan-terragrunt.result check, rather than relying on the implicit success-of-all-needs default, so this condition is the single source of truth for whether apply runs.
     if: always() && github.event_name == 'push' && needs['plan-terragrunt'].result == 'success'
     runs-on: ubuntu-latest
-    environment: ${{ needs.context.outputs.environment }}-infra
+    environment: ${{ needs.context.outputs.environment }}-infra-apply
     defaults:
       run:
         working-directory: infra/envs/${{ needs.context.outputs.environment }}
@@ -257,7 +259,7 @@ jobs:
     if: always() && needs['apply-terragrunt'].result == 'success'
     runs-on: ubuntu-latest
     # Same environment apply-terragrunt just used — GitHub only prompts a required reviewer once per (run, environment), not once per job, so this doesn't add a second approval click.
-    environment: ${{ needs.context.outputs.environment }}-infra
+    environment: ${{ needs.context.outputs.environment }}-infra-apply
     steps:
       - uses: actions/checkout@v4
 
