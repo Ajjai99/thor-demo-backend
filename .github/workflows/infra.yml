@@ -1,18 +1,13 @@
 name: Infra
 
-# Every PR touching infra/** (against dev, qa, or main) runs the same four
-# checks — init, validate, lint, plan — as four separate, individually
-# visible jobs; apply only ever runs on a push to dev/qa/main (i.e. after a
-# PR merges), automatically for dev and behind whatever required reviewers
-# are configured on qa-infra/prod-infra. pull_request and push are used to
-# distinguish preview-only from apply, not action/merged inspection on a
-# single event type — a merge fires both pull_request:closed and push for
-# the same change, so listening for both would double-apply; not listening
-# for pull_request:closed at all avoids that entirely.
+# This workflow reviews and applies infrastructure changes (Terraform, via Terragrunt) for dev, qa, and prod.
 #
-# One file, no reusable workflow_call split — a PR/push only ever resolves
-# to one environment, so there was never a case where the job graph needed
-# to run more than once per trigger, unlike backend.yml's per-service calls.
+# On a pull request: runs 4 read-only checks (init, validate, lint, plan) and stops - nothing is changed yet.
+# On a push (i.e. after a PR merges): runs those same checks, then actually applies the change - automatically for dev, or after approval for qa/prod.
+#
+# Both `pull_request` and `push` are used (instead of one trigger checking "was this merged?") because a single merge fires both events - reacting to both would apply the change twice. Only applying on `push` avoids that.
+#
+# Everything lives in this one file instead of being split into reusable pieces, since each run only ever targets one environment at a time.
 
 on:
   pull_request:
@@ -23,7 +18,7 @@ on:
     branches: [dev, qa, main]
     paths: ["infra/**"]
 
-# Serializes runs per target branch (so two close-together dev pushes queue instead of racing) — the S3 backend's lockfile already prevents actual state corruption, this just avoids a losing run failing outright on a lock conflict. cancel-in-progress stays false: killing a run mid-apply could leave infrastructure partially applied.
+# Runs for the same branch happen one at a time, not in parallel, so two close-together pushes don't race each other. Never cancels a run partway through - stopping mid-apply could leave infrastructure half-changed.
 concurrency:
   group: infra-${{ github.event_name == 'push' && github.ref_name || github.base_ref }}
   cancel-in-progress: false
