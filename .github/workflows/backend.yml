@@ -69,7 +69,10 @@ jobs:
       task-api: ${{ steps.filter.outputs['task-api'] }}
       intelligence-engine: ${{ steps.filter.outputs['intelligence-engine'] }}
     steps:
+      # fetch-depth: 0 (full history) — dorny/paths-filter needs to diff against github.event.before to know what actually changed on a push; the default shallow (depth-1) checkout doesn't have that commit available, so the diff can't be computed and the action fails open (treats every filter as matched) rather than silently skip real changes.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: dorny/paths-filter@v3
         id: filter
         with:
