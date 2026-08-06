@@ -3,11 +3,11 @@ locals {
 
   account_map = {
     dev = {
-      account_id = "ACCOUNT-ID" # Account A, shared with qa — provide aws-account-id
+      account_id = "877969058937" # Account A, shared with qa — provide aws-account-id
       aws_region = "us-east-1"
     }
     qa = {
-      account_id = "ACCOUNT-ID" # Account A, shared with dev — provide aws-account-id
+      account_id = "877969058937" # Account A, shared with dev — provide aws-account-id
       aws_region = "us-east-1"
     }
     prod = {
