@@ -91,5 +91,9 @@ inputs = {
   enable_frontend      = true
   frontend_price_class = "PriceClass_100"
 
+  # --- api gateway authorizer ---
+  # Off until real authorizer code + seeded API keys exist — leaves the proxy open (authorization = NONE) until then.
+  enable_authorizer = false
+
   tags = {}
 }

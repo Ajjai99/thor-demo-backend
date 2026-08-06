@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/Thor.Authorizer.csproj" />
+  <Project Path="test/Thor.Authorizer.Tests.csproj" />
+</Solution>

@@ -26,8 +26,8 @@ inputs = {
     thor = {
       container_image       = ""
       container_port        = 8080
-      cpu                   = 512
-      memory                = 1024
+      cpu                   = 512  # 0.5 vCPU
+      memory                = 1024 # 1 GB
       desired_count         = 2
       min_healthy_percent   = 100
       max_percent           = 200
@@ -43,8 +43,8 @@ inputs = {
     task-api = {
       container_image       = ""
       container_port        = 8080
-      cpu                   = 512
-      memory                = 1024
+      cpu                   = 512  # 0.5 vCPU
+      memory                = 1024 # 1 GB
       desired_count         = 2
       min_healthy_percent   = 100
       max_percent           = 200
@@ -59,8 +59,8 @@ inputs = {
     intelligence-engine = {
       container_image       = ""
       container_port        = 8080
-      cpu                   = 512
-      memory                = 1024
+      cpu                   = 512  # 0.5 vCPU
+      memory                = 1024 # 1 GB
       desired_count         = 2
       min_healthy_percent   = 100
       max_percent           = 200
@@ -88,6 +88,10 @@ inputs = {
   aurora_backup_retention_days = 7
   aurora_deletion_protection   = false
   aurora_skip_final_snapshot   = true
+
+  # --- api gateway authorizer ---
+  # Off until real authorizer code + seeded API keys exist — leaves the proxy open (authorization = NONE) until then.
+  enable_authorizer = false
 
   tags = {}
 }

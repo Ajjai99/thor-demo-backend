@@ -1,0 +1,194 @@
+name: Deploy
+
+# Entry point — decides environment/mode/which service(s) changed, then calls _deploy-core.yml. Replaces backend.yml + backend-dispatch.yml.
+#
+# Two real triggers:
+#   push to dev   -> mode: deploy   (dev builds from source)
+#   push to qa/main -> mode: promote (a merged deploy/<service>-<upstream-env>-image.json manifest PR is what got here — _deploy-core.yml reads it)
+#   pull_request  -> preview only, calls backend-preview.yml directly (compile+unit-test, no Docker/AWS/JFrog — no manifest is ever produced or consumed by a preview)
+#   workflow_dispatch -> manual deploy/rollback, any environment, optionally pinned to an exact image_digest
+#
+# Path-aware: dorny/paths-filter decides which service(s) actually changed
+# — source changes only matter on a push to dev, manifest changes only
+# matter on a push to qa/main (a manifest PR merging into qa touches
+# deploy/<service>-dev-image.json; merging into main touches
+# deploy/<service>-qa-image.json — one broad per-service "manifest" filter
+# covers both, since which specific file is relevant is already implied by
+# which branch this push landed on).
+
+on:
+  push:
+    branches: [dev, qa, main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [dev, qa, main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        type: choice
+        options: [dev, qa, prod]
+      service:
+        description: "Service to deploy"
+        required: true
+        type: choice
+        options: [thor, task-api, intelligence-engine]
+      image_digest:
+        description: "JFrog digest to deploy (blank = normal resolution for this environment's trigger)"
+        required: false
+        type: string
+
+# id-token: write must be re-declared at every hop of a reusable-workflow chain or downstream _deploy-core.yml calls get capped to id-token: none. contents: write / pull-requests: write for the same reason — manifest-write needs them, and permissions don't implicitly propagate down through a workflow_call boundary.
+permissions:
+  id-token: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  detect-changes:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      thor-source: ${{ steps.filter.outputs['thor-source'] }}
+      thor-manifest: ${{ steps.filter.outputs['thor-manifest'] }}
+      task-api-source: ${{ steps.filter.outputs['task-api-source'] }}
+      task-api-manifest: ${{ steps.filter.outputs['task-api-manifest'] }}
+      intelligence-engine-source: ${{ steps.filter.outputs['intelligence-engine-source'] }}
+      intelligence-engine-manifest: ${{ steps.filter.outputs['intelligence-engine-manifest'] }}
+    steps:
+      # fetch-depth: 0 — dorny/paths-filter diffs against github.event.before on a push; a shallow clone doesn't have that commit's history and the action fails open (treats every filter as matched) instead of erroring.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            thor-source:
+              - 'backend/services/thor/**'
+            thor-manifest:
+              - 'deploy/thor-*.json'
+            task-api-source:
+              - 'backend/services/task-api/**'
+            task-api-manifest:
+              - 'deploy/task-api-*.json'
+            intelligence-engine-source:
+              - 'backend/services/intelligence-engine/**'
+            intelligence-engine-manifest:
+              - 'deploy/intelligence-engine-*.json'
+
+  context:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set.outputs.environment }}
+      mode: ${{ steps.set.outputs.mode }}
+      thor: ${{ steps.set.outputs.thor }}
+      task-api: ${{ steps.set.outputs['task-api'] }}
+      intelligence-engine: ${{ steps.set.outputs['intelligence-engine'] }}
+    steps:
+      - id: set
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BRANCH="${{ github.ref_name }}"
+          else
+            BRANCH="${{ github.base_ref }}"
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "mode=preview" >> "$GITHUB_OUTPUT"
+          elif [ "$BRANCH" = "dev" ]; then
+            echo "mode=deploy" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=promote" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$BRANCH" = "qa" ]; then
+            echo "environment=qa" >> "$GITHUB_OUTPUT"
+          elif [ "$BRANCH" = "main" ]; then
+            echo "environment=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Preview only ever needs the source filter — a PR never touches manifest files.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "thor=${{ needs['detect-changes'].outputs['thor-source'] }}" >> "$GITHUB_OUTPUT"
+            echo "task-api=${{ needs['detect-changes'].outputs['task-api-source'] }}" >> "$GITHUB_OUTPUT"
+            echo "intelligence-engine=${{ needs['detect-changes'].outputs['intelligence-engine-source'] }}" >> "$GITHUB_OUTPUT"
+          elif [ "$BRANCH" = "dev" ]; then
+            echo "thor=${{ needs['detect-changes'].outputs['thor-source'] }}" >> "$GITHUB_OUTPUT"
+            echo "task-api=${{ needs['detect-changes'].outputs['task-api-source'] }}" >> "$GITHUB_OUTPUT"
+            echo "intelligence-engine=${{ needs['detect-changes'].outputs['intelligence-engine-source'] }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "thor=${{ needs['detect-changes'].outputs['thor-manifest'] }}" >> "$GITHUB_OUTPUT"
+            echo "task-api=${{ needs['detect-changes'].outputs['task-api-manifest'] }}" >> "$GITHUB_OUTPUT"
+            echo "intelligence-engine=${{ needs['detect-changes'].outputs['intelligence-engine-manifest'] }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy-thor:
+    needs: context
+    if: needs.context.outputs.mode != 'preview' && needs.context.outputs.thor == 'true'
+    uses: ./.github/workflows/_deploy-core.yml
+    with:
+      service: thor
+      environment: ${{ needs.context.outputs.environment }}
+      mode: ${{ needs.context.outputs.mode }}
+    secrets: inherit
+
+  deploy-task-api:
+    needs: context
+    if: needs.context.outputs.mode != 'preview' && needs.context.outputs['task-api'] == 'true'
+    uses: ./.github/workflows/_deploy-core.yml
+    with:
+      service: task-api
+      environment: ${{ needs.context.outputs.environment }}
+      mode: ${{ needs.context.outputs.mode }}
+    secrets: inherit
+
+  deploy-intelligence-engine:
+    needs: context
+    if: needs.context.outputs.mode != 'preview' && needs.context.outputs['intelligence-engine'] == 'true'
+    uses: ./.github/workflows/_deploy-core.yml
+    with:
+      service: intelligence-engine
+      environment: ${{ needs.context.outputs.environment }}
+      mode: ${{ needs.context.outputs.mode }}
+    secrets: inherit
+
+  preview-thor:
+    needs: context
+    if: needs.context.outputs.mode == 'preview' && needs.context.outputs.thor == 'true'
+    uses: ./.github/workflows/backend-preview.yml
+    with:
+      service: thor
+    secrets: inherit
+
+  preview-task-api:
+    needs: context
+    if: needs.context.outputs.mode == 'preview' && needs.context.outputs['task-api'] == 'true'
+    uses: ./.github/workflows/backend-preview.yml
+    with:
+      service: task-api
+    secrets: inherit
+
+  preview-intelligence-engine:
+    needs: context
+    if: needs.context.outputs.mode == 'preview' && needs.context.outputs['intelligence-engine'] == 'true'
+    uses: ./.github/workflows/backend-preview.yml
+    with:
+      service: intelligence-engine
+    secrets: inherit
+
+  deploy-manual:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/_deploy-core.yml
+    with:
+      service: ${{ inputs.service }}
+      environment: ${{ inputs.environment }}
+      mode: ${{ inputs.environment == 'dev' && 'deploy' || 'promote' }}
+      image_digest: ${{ inputs.image_digest }}
+    secrets: inherit

@@ -76,6 +76,24 @@ module "api_gateway" {
   nlb_dns_name      = module.ecs.nlb_dns_names["thor"]
   nlb_listener_port = var.services["thor"].nlb_listener_port
 
+  enable_authorizer               = var.enable_authorizer
+  authorizer_lambda_invoke_arn    = var.enable_authorizer ? module.lambda[0].lambda_invoke_arn : ""
+  authorizer_lambda_function_name = var.enable_authorizer ? module.lambda[0].lambda_function_name : ""
+
+  tags = var.tags
+}
+
+# Validates connector API keys against Aurora via RDS Data API — no VPC networking needed, same reasoning as CI using Data API for migrations. Gated separately from enable_compute since it only depends on Aurora, not ECS.
+module "lambda" {
+  count = var.enable_authorizer ? 1 : 0
+
+  source = "./modules/lambda"
+
+  environment          = var.environment
+  aurora_cluster_arn   = module.aurora.cluster_arn
+  aurora_secret_arn    = module.aurora.master_user_secret_arn
+  aurora_database_name = module.aurora.database_name
+
   tags = var.tags
 }
 
