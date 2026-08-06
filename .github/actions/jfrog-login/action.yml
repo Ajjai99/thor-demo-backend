@@ -1,0 +1,30 @@
+name: JFrog login
+description: Logs Docker in to JFrog Artifactory's Docker registry using an access token.
+
+inputs:
+  jfrog_url:
+    description: JFrog Artifactory base URL (e.g. https://example.jfrog.io)
+    required: true
+  jfrog_username:
+    description: JFrog user identity associated with the access token
+    required: true
+  jfrog_access_token:
+    required: true
+
+outputs:
+  registry:
+    description: Docker registry hostname (jfrog_url with the scheme stripped) — callers build the full image path (<registry>/<repo>/<service>:<tag>) on top of this.
+    value: ${{ steps.registry.outputs.registry }}
+
+runs:
+  using: composite
+  steps:
+    - id: registry
+      shell: bash
+      run: |
+        REGISTRY="$(echo "${{ inputs.jfrog_url }}" | sed -E 's#^https?://##')"
+        echo "registry=${REGISTRY}" >> "$GITHUB_OUTPUT"
+
+    - shell: bash
+      run: |
+        echo "${{ inputs.jfrog_access_token }}" | docker login "${{ steps.registry.outputs.registry }}" --username "${{ inputs.jfrog_username }}" --password-stdin

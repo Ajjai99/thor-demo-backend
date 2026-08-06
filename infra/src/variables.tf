@@ -143,6 +143,14 @@ variable "frontend_price_class" {
   default     = "PriceClass_100"
 }
 
+# --- api gateway authorizer (Lambda, validates connector API keys against Aurora) ---
+
+variable "enable_authorizer" {
+  type        = bool
+  description = "Locks the API Gateway proxy behind the Lambda API-key authorizer instead of leaving it open (authorization = NONE). Off by default until real authorizer code and seeded API keys exist."
+  default     = false
+}
+
 # --- database (Aurora PostgreSQL, module.aurora — task-api's database) ---
 # One cluster per environment, not a map like `services` — RDS Proxy and
 # per-tenant credentials are deliberately out of scope for now, see this

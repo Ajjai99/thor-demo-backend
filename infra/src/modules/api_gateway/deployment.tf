@@ -9,6 +9,7 @@ resource "aws_api_gateway_deployment" "thor-apigw-deployment" {
       aws_api_gateway_method.proxy.id,
       aws_api_gateway_integration.proxy_root.id,
       aws_api_gateway_integration.proxy.id,
+      var.enable_authorizer ? aws_api_gateway_authorizer.api_key[0].id : "no-authorizer",
     ]))
   }
 

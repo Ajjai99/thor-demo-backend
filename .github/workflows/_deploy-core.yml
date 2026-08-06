@@ -1,0 +1,332 @@
+name: _deploy-core
+
+# Reusable workflow — the actual auth, build/publish/promote, and manifest-write logic for all three environments, replacing backend-dispatch.yml + backend-dev.yml + backend-qa.yml + backend-prod.yml combined. Called only by deploy.yml.
+#
+# JFrog Artifactory is the single source of truth for built images — dev
+# builds once, publishes to JFrog, then pulls that same artifact back down
+# into its own ECR to deploy. qa/prod never build from source and never
+# talk to an upstream environment's ECR directly anymore: they pull by
+# digest from JFrog, using the digest recorded in the upstream
+# environment's manifest file (deploy/<service>-<env>-image.json).
+#
+# Every job that produces a manifest opens a PR against the downstream
+# branch (manifest-write composite) instead of writing it directly — a
+# human has to merge that PR, and merging it is the push event that
+# triggers the next stage's job in this same file. QA's own two-stage
+# candidate/test/approve/rollback sequence is unchanged from before this
+# restructure; it's just inlined here as two if-gated jobs instead of
+# living in its own file, same trick backend-dispatch.yml already used for
+# routing between environments.
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        required: true
+        type: string
+      environment:
+        description: "dev, qa, or prod"
+        required: true
+        type: string
+      mode:
+        description: "deploy (build from source, dev only) or promote (read a manifest and move a pre-built artifact forward, qa/prod)"
+        required: true
+        type: string
+      image_digest:
+        description: "JFrog digest to promote/redeploy (manual rollback). Blank = read it from the upstream environment's manifest."
+        required: false
+        type: string
+        default: ""
+      timeout_minutes:
+        description: "Max minutes to wait for the ECS deployment to stabilize."
+        required: false
+        type: number
+        default: 30
+
+# contents: write + pull-requests: write, on top of the usual id-token: write, since manifest-write commits/opens PRs now — a real permission increase over what this chain needed before manifests existed.
+permissions:
+  id-token: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  dev:
+    if: inputs.environment == 'dev'
+    runs-on: ubuntu-latest
+    environment: dev
+    defaults:
+      run:
+        working-directory: backend/services/${{ inputs.service }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/ecr-login
+        id: ecr
+        with:
+          role_arn: ${{ vars.AWS_ROLE_ARN }}
+          region: ${{ env.AWS_REGION }}
+
+      - uses: ./.github/actions/jfrog-login
+        id: jfrog
+        with:
+          jfrog_url: ${{ vars.JFROG_URL }}
+          jfrog_username: ${{ vars.JFROG_USERNAME }}
+          jfrog_access_token: ${{ secrets.JFROG_ACCESS_TOKEN }}
+
+      - name: Set image URIs
+        id: image
+        run: |
+          echo "jfrog_uri=${{ steps.jfrog.outputs.registry }}/${{ vars.JFROG_DOCKER_REPO }}/${{ inputs.service }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "ecr_uri=${{ steps.ecr.outputs.registry }}/${{ inputs.service }}-dev:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore & build (.NET)
+        if: inputs.service != 'intelligence-engine'
+        run: |
+          dotnet restore
+          dotnet build --no-restore -c Release
+
+      # continue-on-error: fast feedback, not a gate.
+      - name: Run unit tests (.NET)
+        if: inputs.service != 'intelligence-engine'
+        continue-on-error: true
+        run: |
+          if find . -iname '*.tests.csproj' | grep -q .; then
+            dotnet test --no-build -c Release
+          else
+            echo "No test project found, skipping."
+          fi
+
+      - name: Install dependencies (Python)
+        if: inputs.service == 'intelligence-engine'
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests (Python)
+        if: inputs.service == 'intelligence-engine'
+        continue-on-error: true
+        run: |
+          if [ -d tests ] || ls test_*.py >/dev/null 2>&1; then
+            pip install pytest
+            pytest
+          else
+            echo "No tests found, skipping."
+          fi
+
+      - name: Build image
+        run: docker build -t "${{ steps.image.outputs.jfrog_uri }}" .
+
+      # Real gate — CRITICAL/HIGH findings fail this step, so the image never reaches JFrog, ECR, or ECS.
+      - name: Scan image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.image.outputs.jfrog_uri }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+
+      - name: Publish to JFrog
+        run: docker push "${{ steps.image.outputs.jfrog_uri }}"
+
+      # The pinned, pullable identity every downstream promotion actually uses — not just the mutable tag.
+      - name: Capture JFrog digest
+        id: digest
+        run: |
+          FULL_REF=$(docker inspect --format='{{index .RepoDigests 0}}' "${{ steps.image.outputs.jfrog_uri }}")
+          echo "ref=${FULL_REF}" >> "$GITHUB_OUTPUT"
+
+      - name: Promote into dev's own ECR
+        run: |
+          docker tag "${{ steps.image.outputs.jfrog_uri }}" "${{ steps.image.outputs.ecr_uri }}"
+          docker push "${{ steps.image.outputs.ecr_uri }}"
+
+      - uses: ./.github/actions/ecs-deploy
+        with:
+          environment: dev
+          service: ${{ inputs.service }}
+          image_uri: ${{ steps.image.outputs.ecr_uri }}
+          timeout_minutes: ${{ inputs.timeout_minutes }}
+
+      - uses: ./.github/actions/manifest-write
+        with:
+          service: ${{ inputs.service }}
+          environment: dev
+          target_branch: qa
+          digest: ${{ steps.digest.outputs.ref }}
+          commit_id: ${{ github.sha }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  qa-deploy:
+    if: inputs.environment == 'qa'
+    runs-on: ubuntu-latest
+    environment: qa-candidate
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+    outputs:
+      digest: ${{ steps.manifest.outputs.digest }}
+      tag: ${{ steps.manifest.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/ecr-login
+        id: ecr
+        with:
+          role_arn: ${{ vars.AWS_ROLE_ARN }}
+          region: ${{ env.AWS_REGION }}
+
+      - uses: ./.github/actions/jfrog-login
+        id: jfrog
+        with:
+          jfrog_url: ${{ vars.JFROG_URL }}
+          jfrog_username: ${{ vars.JFROG_USERNAME }}
+          jfrog_access_token: ${{ secrets.JFROG_ACCESS_TOKEN }}
+
+      # Blank image_digest (the normal case) means "whatever dev's manifest currently records" — read directly from the file this job's own triggering push just merged.
+      - name: Read manifest / resolve digest to promote
+        id: manifest
+        run: |
+          if [ -n "${{ inputs.image_digest }}" ]; then
+            DIGEST="${{ inputs.image_digest }}"
+            TAG="manual-$(echo "${DIGEST}" | sed 's/.*@sha256://' | cut -c1-12)"
+            echo "Using explicitly provided digest: ${DIGEST}"
+          else
+            DIGEST=$(jq -r '.digest' "deploy/${{ inputs.service }}-dev-image.json")
+            TAG=$(jq -r '.commitId' "deploy/${{ inputs.service }}-dev-image.json")
+            echo "Resolved dev's manifest digest: ${DIGEST}"
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Set candidate image URI
+        id: image
+        run: echo "candidate_uri=${{ steps.ecr.outputs.registry }}/${{ inputs.service }}-qa:candidate-${{ steps.manifest.outputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Pull from JFrog and push as a QA candidate
+        run: |
+          docker pull "${{ steps.manifest.outputs.digest }}"
+          docker tag "${{ steps.manifest.outputs.digest }}" "${{ steps.image.outputs.candidate_uri }}"
+          docker push "${{ steps.image.outputs.candidate_uri }}"
+
+      # The service's actual running definition, not the task-definition family's latest registered revision — those can differ, and it's specifically what's live right now that a failed test must roll back to.
+      - name: Capture currently-running task definition
+        id: previous
+        run: |
+          ARN=$(aws ecs describe-services --cluster "thor-qa" --services "${{ inputs.service }}" --query 'services[0].taskDefinition' --output text)
+          echo "arn=$ARN" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/ecs-deploy
+        with:
+          environment: qa
+          service: ${{ inputs.service }}
+          image_uri: ${{ steps.image.outputs.candidate_uri }}
+          timeout_minutes: ${{ inputs.timeout_minutes }}
+
+      # Stub until a real Postman/Newman suite exists — see deployment_strategy_plan.md §8. Always hits thor's public endpoint; Service Connect routes thor's internal calls to whichever service just redeployed automatically.
+      - name: Run integration tests against candidate
+        run: |
+          if [ -z "${{ vars.API_BASE_URL }}" ]; then
+            echo "::warning::API_BASE_URL isn't set yet — skipping the real smoke test. This is not a real gate right now."
+            exit 0
+          fi
+          curl -sf "${{ vars.API_BASE_URL }}/health" > /dev/null
+
+      - name: Roll back QA to last stable revision
+        if: failure()
+        run: |
+          aws ecs update-service \
+            --cluster "thor-qa" \
+            --service "${{ inputs.service }}" \
+            --task-definition "${{ steps.previous.outputs.arn }}" \
+            >/dev/null
+          echo "Integration tests failed - rolled back to ${{ steps.previous.outputs.arn }}. Nothing promoted to QA's tagged image."
+
+  qa-promote:
+    needs: qa-deploy
+    if: inputs.environment == 'qa' && needs['qa-deploy'].result == 'success'
+    runs-on: ubuntu-latest
+    environment: qa
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+    steps:
+      - uses: ./.github/actions/ecr-login
+        id: ecr
+        with:
+          role_arn: ${{ vars.AWS_ROLE_ARN }}
+          region: ${{ env.AWS_REGION }}
+
+      - name: Promote tested candidate to the verified tag
+        run: |
+          CANDIDATE_URI="${{ steps.ecr.outputs.registry }}/${{ inputs.service }}-qa:candidate-${{ needs['qa-deploy'].outputs.tag }}"
+          VERIFIED_URI="${{ steps.ecr.outputs.registry }}/${{ inputs.service }}-qa:${{ needs['qa-deploy'].outputs.tag }}"
+          docker pull "${CANDIDATE_URI}"
+          docker tag "${CANDIDATE_URI}" "${VERIFIED_URI}"
+          docker push "${VERIFIED_URI}"
+
+      - uses: ./.github/actions/manifest-write
+        with:
+          service: ${{ inputs.service }}
+          environment: qa
+          target_branch: main
+          digest: ${{ needs['qa-deploy'].outputs.digest }}
+          commit_id: ${{ needs['qa-deploy'].outputs.tag }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  prod:
+    if: inputs.environment == 'prod'
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/ecr-login
+        id: ecr
+        with:
+          role_arn: ${{ vars.AWS_ROLE_ARN }}
+          region: ${{ env.AWS_REGION }}
+
+      - name: Read manifest / resolve digest to promote
+        id: manifest
+        run: |
+          if [ -n "${{ inputs.image_digest }}" ]; then
+            DIGEST="${{ inputs.image_digest }}"
+            TAG="manual-$(echo "${DIGEST}" | sed 's/.*@sha256://' | cut -c1-12)"
+            echo "Using explicitly provided digest: ${DIGEST}"
+          else
+            DIGEST=$(jq -r '.digest' "deploy/${{ inputs.service }}-qa-image.json")
+            TAG=$(jq -r '.commitId' "deploy/${{ inputs.service }}-qa-image.json")
+            echo "Resolved qa's manifest digest: ${DIGEST}"
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Set image URI
+        id: image
+        run: echo "uri=${{ steps.ecr.outputs.registry }}/${{ inputs.service }}-prod:${{ steps.manifest.outputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Pull from JFrog and push into prod's ECR
+        run: |
+          docker pull "${{ steps.manifest.outputs.digest }}"
+          docker tag "${{ steps.manifest.outputs.digest }}" "${{ steps.image.outputs.uri }}"
+          docker push "${{ steps.image.outputs.uri }}"
+
+      - uses: ./.github/actions/ecs-deploy
+        with:
+          environment: prod
+          service: ${{ inputs.service }}
+          image_uri: ${{ steps.image.outputs.uri }}
+          timeout_minutes: ${{ inputs.timeout_minutes }}
+
+      # No target_branch — nothing downstream reads prod's manifest, so this commits straight to main instead of opening a PR nobody needs to review to unblock anything.
+      - uses: ./.github/actions/manifest-write
+        with:
+          service: ${{ inputs.service }}
+          environment: prod
+          digest: ${{ steps.manifest.outputs.digest }}
+          commit_id: ${{ steps.manifest.outputs.tag }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

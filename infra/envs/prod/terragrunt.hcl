@@ -10,10 +10,10 @@ terraform {
 inputs = {
   # --- network ---
   enable_network       = true
-  vpc_cidr             = "10.2.0.0/16"
+  vpc_cidr             = "10.0.0.0/16"
   az_count             = 2
-  public_subnet_cidrs  = ["10.2.0.0/24", "10.2.1.0/24"]
-  private_subnet_cidrs = ["10.2.10.0/24", "10.2.11.0/24"]
+  public_subnet_cidrs  = ["10.0.0.0/24", "10.0.1.0/24"]
+  private_subnet_cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
   enable_vpc_endpoints = true
 
   # --- ecs compute ---
@@ -87,6 +87,10 @@ inputs = {
   aurora_backup_retention_days = 30
   aurora_deletion_protection   = true
   aurora_skip_final_snapshot   = false
+
+  # --- api gateway authorizer ---
+  # Off until real authorizer code + seeded API keys exist — leaves the proxy open (authorization = NONE) until then.
+  enable_authorizer = false
 
   tags = {}
 }

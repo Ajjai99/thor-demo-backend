@@ -2,10 +2,12 @@ name: Infra
 
 # This workflow reviews and applies infrastructure changes (Terraform, via Terragrunt) for dev, qa, and prod.
 #
-# On a pull request: runs 4 read-only checks (init, validate, lint, plan) and stops - nothing is changed yet.
+# On a pull request: runs 4 read-only checks (init, validate+lint, plan) and stops - nothing is changed yet.
 # On a push (i.e. after a PR merges): runs those same checks, then actually applies the change - automatically for dev, or after approval for qa/prod.
 #
 # Both `pull_request` and `push` are used (instead of one trigger checking "was this merged?") because a single merge fires both events - reacting to both would apply the change twice. Only applying on `push` avoids that.
+#
+# AWS role resolution is repo-level, not GitHub-Environment-level: DEV_AWS_ROLE_ARN / QA_AWS_ROLE_ARN / PROD_AWS_ROLE_ARN repo variables, picked with a chained &&/|| expression on context's environment output, rather than via a per-environment vars.AWS_ROLE_ARN. init/validate/plan run fully ungated - they're read-only. apply-terragrunt and seed-ecr-placeholder are the only jobs that set a GitHub Environment (context's apply_environment output: blank for dev, so no gate at all; `qa`/`prod` otherwise - the same two Environments the backend deploy pipeline already uses, gated there with required reviewers).
 #
 # Everything lives in this one file instead of being split into reusable pieces, since each run only ever targets one environment at a time.
 
@@ -33,55 +35,55 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.set.outputs.environment }}
+      apply_environment: ${{ steps.set.outputs.apply_environment }}
     steps:
       - id: set
         run: |
+          # Get the target branch: pushed branch on push, PR's base branch on pull_request.
           if [ "${{ github.event_name }}" = "push" ]; then
             BRANCH="${{ github.ref_name }}"
           else
             BRANCH="${{ github.base_ref }}"
           fi
 
+          # Map branch to environment name.
           if [ "$BRANCH" = "qa" ]; then
-            echo "environment=qa" >> "$GITHUB_OUTPUT"
+            ENVIRONMENT="qa"
           elif [ "$BRANCH" = "main" ]; then
-            echo "environment=prod" >> "$GITHUB_OUTPUT"
+            ENVIRONMENT="prod"
+          elif [ "$BRANCH" = "dev" ]; then
+            ENVIRONMENT="dev"
           else
-            echo "environment=dev" >> "$GITHUB_OUTPUT"
+            echo "::error::Unrecognized branch '$BRANCH' - expected dev, qa, or main." >&2
+            exit 1
+          fi
+
+          echo "environment=${ENVIRONMENT}" >> "$GITHUB_OUTPUT"
+
+          # Only qa/prod require reviewer approval.
+          if [ "$ENVIRONMENT" = "qa" ] || [ "$ENVIRONMENT" = "prod" ]; then
+            echo "apply_environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
+          else
+            echo "apply_environment=" >> "$GITHUB_OUTPUT"
           fi
 
   init-terragrunt:
     needs: context
     runs-on: ubuntu-latest
-    environment: ${{ needs.context.outputs.environment }}-infra-plan
     defaults:
       run:
         working-directory: infra/envs/${{ needs.context.outputs.environment }}
-    # Every later job requires this one to succeed first (needs chain: validate -> lint -> plan -> apply), so the state bucket only ever needs auto-creating here — by the time any later job runs its own implicit init, it already exists.
-    # TG_BACKEND_BOOTSTRAP: without it, a missing state bucket is a hard failure ("S3 bucket ... does not exist"), not something Terragrunt creates on its own — auto-creation is opt-in in this Terragrunt version, confirmed against a real missing-bucket error, not the default behavior TG_NON_INTERACTIVE alone would imply.
     env:
       TG_NON_INTERACTIVE: "true"
       TG_BACKEND_BOOTSTRAP: "true"
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: ./.github/actions/terragrunt-setup
         with:
-          terraform_version: "1.15.6"
-          terraform_wrapper: false
+          role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
+          region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
-      - name: Install Terragrunt
-        run: |
-          curl -sL -o /usr/local/bin/terragrunt "https://github.com/gruntwork-io/terragrunt/releases/download/v1.1.2/terragrunt_linux_amd64"
-          chmod +x /usr/local/bin/terragrunt
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
-
-      # Fast-fail gate — backend/auth problems surface here before lint/plan spend any time.
       # -reconfigure: without it, a changed remote_state/provider block in root.hcl fails hard ("Error: Backend configuration changed") instead of picking up the new config — confirmed harmless on a genuinely fresh init too (today's normal case, since every job checks out clean).
       - name: terragrunt init
         run: terragrunt init -reconfigure -no-color
@@ -89,44 +91,19 @@ jobs:
   validate-terragrunt:
     needs: [context, init-terragrunt]
     runs-on: ubuntu-latest
-    environment: ${{ needs.context.outputs.environment }}-infra-plan
     defaults:
       run:
         working-directory: infra/envs/${{ needs.context.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: ./.github/actions/terragrunt-setup
         with:
-          terraform_version: "1.15.6"
-          terraform_wrapper: false
-
-      - name: Install Terragrunt
-        run: |
-          curl -sL -o /usr/local/bin/terragrunt "https://github.com/gruntwork-io/terragrunt/releases/download/v1.1.2/terragrunt_linux_amd64"
-          chmod +x /usr/local/bin/terragrunt
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
+          region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: terragrunt validate
         run: terragrunt validate -no-color
-
-  lint-terragrunt:
-    needs: [context, validate-terragrunt]
-    runs-on: ubuntu-latest
-    # Not per-environment — hcl fmt checks the .hcl files under infra/ (root.hcl, envs/*/terragrunt.hcl); tflint checks the shared .tf module code under infra/src. Neither depends on which environment triggered this run.
-    steps:
-      - uses: actions/checkout@v4
-
-      # No setup-terraform/AWS credentials here — pure static analysis, no provider schema or backend access needed.
-      - name: Install Terragrunt
-        run: |
-          curl -sL -o /usr/local/bin/terragrunt "https://github.com/gruntwork-io/terragrunt/releases/download/v1.1.2/terragrunt_linux_amd64"
-          chmod +x /usr/local/bin/terragrunt
 
       # Only touches *.hcl files (root.hcl, envs/*/terragrunt.hcl) — recursive by default, so this alone covers every environment's terragrunt.hcl, not just the triggering one.
       - name: terragrunt hcl fmt --check
@@ -145,30 +122,18 @@ jobs:
           tflint --recursive
 
   plan-terragrunt:
-    needs: [context, lint-terragrunt]
+    needs: [context, validate-terragrunt]
     runs-on: ubuntu-latest
-    environment: ${{ needs.context.outputs.environment }}-infra-plan
     defaults:
       run:
         working-directory: infra/envs/${{ needs.context.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: ./.github/actions/terragrunt-setup
         with:
-          terraform_version: "1.15.6"
-          terraform_wrapper: false
-
-      - name: Install Terragrunt
-        run: |
-          curl -sL -o /usr/local/bin/terragrunt "https://github.com/gruntwork-io/terragrunt/releases/download/v1.1.2/terragrunt_linux_amd64"
-          chmod +x /usr/local/bin/terragrunt
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
+          region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       # -out uses an absolute /tmp path, not a relative one — terragrunt actually runs terraform from a hashed .terragrunt-cache/... subdirectory, not from this working-directory, so a relative -out path would land somewhere inside that cache maze instead of somewhere upload-artifact can find it.
       - name: terragrunt plan
@@ -212,30 +177,19 @@ jobs:
   apply-terragrunt:
     needs: [context, plan-terragrunt]
     # Explicit always() + a manual plan-terragrunt.result check, rather than relying on the implicit success-of-all-needs default, so this condition is the single source of truth for whether apply runs.
-    if: always() && github.event_name == 'push' && needs['plan-terragrunt'].result == 'success'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    environment: ${{ needs.context.outputs.environment }}-infra-apply
+    environment: ${{ needs.context.outputs.apply_environment }}
     defaults:
       run:
         working-directory: infra/envs/${{ needs.context.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: ./.github/actions/terragrunt-setup
         with:
-          terraform_version: "1.15.6"
-          terraform_wrapper: false
-
-      - name: Install Terragrunt
-        run: |
-          curl -sL -o /usr/local/bin/terragrunt "https://github.com/gruntwork-io/terragrunt/releases/download/v1.1.2/terragrunt_linux_amd64"
-          chmod +x /usr/local/bin/terragrunt
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
+          region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       # Downloads to /tmp, matching where plan-terragrunt wrote it — same reasoning as the plan step's -out path, an absolute path sidesteps terragrunt's .terragrunt-cache/... execution directory entirely.
       - name: Download plan file
@@ -251,17 +205,17 @@ jobs:
   seed-ecr-placeholder:
     needs: [context, apply-terragrunt]
     # Same source-of-truth pattern as apply-terragrunt's own condition — on a PR run apply-terragrunt is skipped, not successful, so this naturally no-ops there too without needing its own event_name check.
-    if: always() && needs['apply-terragrunt'].result == 'success'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     # Same environment apply-terragrunt just used — GitHub only prompts a required reviewer once per (run, environment), not once per job, so this doesn't add a second approval click.
-    environment: ${{ needs.context.outputs.environment }}-infra-apply
+    environment: ${{ needs.context.outputs.apply_environment }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/ecr-login
         id: ecr
         with:
-          role_arn: ${{ vars.AWS_ROLE_ARN }}
+          role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
           region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       # --platform linux/amd64: same reasoning as placeholder-image/push.sh — Fargate task definitions default to X86_64, so this stays explicit even though ubuntu-latest runners are already x86_64 today.
