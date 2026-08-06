@@ -7,7 +7,7 @@ name: Infra
 #
 # Both `pull_request` and `push` are used (instead of one trigger checking "was this merged?") because a single merge fires both events - reacting to both would apply the change twice. Only applying on `push` avoids that.
 #
-# AWS role resolution is repo-level, not GitHub-Environment-level: DEV_AWS_ROLE_ARN / QA_AWS_ROLE_ARN / PROD_AWS_ROLE_ARN repo variables, picked with a chained &&/|| expression on context's environment output, rather than via a per-environment vars.AWS_ROLE_ARN. init/validate/plan run fully ungated - they're read-only. apply-terragrunt and seed-ecr-placeholder are the only jobs that set a GitHub Environment (context's apply_environment output: blank for dev, so no gate at all; `qa`/`prod` otherwise - the same two Environments the backend deploy pipeline already uses, gated there with required reviewers).
+# AWS role resolution is repo-level, not GitHub-Environment-level: DEV_AWS_ROLE_ARN / QA_AWS_ROLE_ARN / PROD_AWS_ROLE_ARN repo variables, picked with a chained &&/|| expression on context's environment output, rather than via a per-environment vars.AWS_ROLE_ARN. init/validate/plan run fully ungated - they're read-only, and never set a GitHub Environment for any branch. apply-terragrunt and seed-ecr-placeholder are the only jobs that set a GitHub Environment - dev/qa/prod, the same three the backend deploy pipeline already uses. Only qa/prod have a required-reviewer rule configured, so dev still applies automatically despite running under a real Environment now.
 #
 # Everything lives in this one file instead of being split into reusable pieces, since each run only ever targets one environment at a time.
 
@@ -35,7 +35,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.set.outputs.environment }}
-      apply_environment: ${{ steps.set.outputs.apply_environment }}
     steps:
       - id: set
         run: |
@@ -59,13 +58,6 @@ jobs:
           fi
 
           echo "environment=${ENVIRONMENT}" >> "$GITHUB_OUTPUT"
-
-          # Only qa/prod require reviewer approval.
-          if [ "$ENVIRONMENT" = "qa" ] || [ "$ENVIRONMENT" = "prod" ]; then
-            echo "apply_environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
-          else
-            echo "apply_environment=" >> "$GITHUB_OUTPUT"
-          fi
 
   init-terragrunt:
     needs: context
@@ -179,7 +171,8 @@ jobs:
     # Explicit always() + a manual plan-terragrunt.result check, rather than relying on the implicit success-of-all-needs default, so this condition is the single source of truth for whether apply runs.
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    environment: ${{ needs.context.outputs.apply_environment }}
+    # dev/qa/prod Environments all exist and are shared with the backend deploy pipeline — only qa/prod have a required-reviewer rule configured, so dev still applies automatically despite running under a real Environment now.
+    environment: ${{ needs.context.outputs.environment }}
     defaults:
       run:
         working-directory: infra/envs/${{ needs.context.outputs.environment }}
@@ -208,7 +201,7 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     # Same environment apply-terragrunt just used — GitHub only prompts a required reviewer once per (run, environment), not once per job, so this doesn't add a second approval click.
-    environment: ${{ needs.context.outputs.apply_environment }}
+    environment: ${{ needs.context.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
 

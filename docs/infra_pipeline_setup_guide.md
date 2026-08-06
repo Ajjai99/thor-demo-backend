@@ -15,24 +15,29 @@ applies Terraform/Terragrunt changes under `infra/` for `dev`, `qa`, and
    with the backend deploy pipeline** (`_deploy-core.yml`), not infra-only
    roles. One role per environment covers both purposes.
 4. Four repo-level variables (`DEV_AWS_ROLE_ARN`/`QA_AWS_ROLE_ARN`/
-   `PROD_AWS_ROLE_ARN`/`AWS_REGION`) plus the `qa`/`prod` GitHub
-   Environments (already needed by backend deploy) configured with
-   required reviewers.
+   `PROD_AWS_ROLE_ARN`/`AWS_REGION`) plus the `dev`/`qa`/`prod` GitHub
+   Environments (already needed by backend deploy) — `qa`/`prod`
+   configured with required reviewers, `dev` left unprotected.
 
 **File location:** `.github/workflows/infra.yml`
 
 ## How this differs from a per-job-environment setup
 
 Only two of `infra.yml`'s six jobs (`apply-terragrunt`, `seed-ecr-placeholder`)
-set a GitHub Environment at all, and only for `qa`/`prod` — dev runs every
-job, including apply, fully ungated. `init-terragrunt`/`validate-terragrunt`/
-`plan-terragrunt` never set an Environment, for any branch — they're
-read-only, so there's nothing to gate. AWS role resolution is **repo-level**
-for every job (`vars.DEV_AWS_ROLE_ARN` etc., picked with a chained
-`&&`/`||` expression on the resolved environment), not GitHub-Environment-
-scoped like a typical per-environment setup. This means there's no
-`dev-infra-plan`/`dev-infra-apply`/`qa-infra-plan`/etc. — just the three
-roles and the two shared Environments.
+set a GitHub Environment at all — `init-terragrunt`/`validate-terragrunt`/
+`plan-terragrunt` never do, for any branch, since they're read-only and
+there's nothing to gate. `apply-terragrunt`/`seed-ecr-placeholder` run
+under the environment `context` resolved (`dev`/`qa`/`prod`) — the same
+three Environments the backend deploy pipeline already uses. `dev` has no
+required-reviewer rule, so it still applies fully automatically; only
+`qa`/`prod` actually pause for approval. AWS role resolution is
+**repo-level** for every job (`vars.DEV_AWS_ROLE_ARN` etc., picked with a
+chained `&&`/`||` expression on the resolved environment), not
+GitHub-Environment-scoped like a typical per-environment setup — that
+part stays true regardless of which Environment (if any) a job runs
+under. This means there's no `dev-infra-plan`/`dev-infra-apply`/
+`qa-infra-plan`/etc. — just the three roles and the three shared
+Environments.
 
 ## Step 1: Configure AWS account IDs (`infra/root.hcl`)
 
@@ -151,10 +156,11 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    ```
 
    The `ref:refs/heads/<branch>` entries exist because `infra.yml`'s
-   `init`/`validate`/`plan` (and dev's `apply`/`seed`, since dev's apply
-   runs with no Environment set) authenticate with no GitHub Environment
-   at all — a push presents a `ref:`-based subject instead of an
-   `environment:`-based one.
+   `init`/`validate`/`plan` never set a GitHub Environment, for any
+   branch — a push presents a `ref:`-based subject there instead of an
+   `environment:`-based one. (`apply-terragrunt`/`seed-ecr-placeholder`
+   run under a real Environment for all three environments now, so those
+   two jobs authenticate via the `environment:<name>` subjects instead.)
 
    **Real GitHub OIDC limitation worth knowing**: the `pull_request`
    subject is identical regardless of which branch the PR targets —
@@ -309,16 +315,20 @@ level, not environment level):
 - `PROD_AWS_ROLE_ARN` = `deploy-prod`'s ARN
 - `AWS_REGION` (optional — defaults to `us-east-1` if unset)
 
-## Step 5: Configure the `qa`/`prod` GitHub Environments
+## Step 5: Configure the `dev`/`qa`/`prod` GitHub Environments
 
 These are the **same** Environments the backend deploy pipeline already
 needs — no infra-specific Environments to create.
 
 1. **Repo → Settings → Environments**
-2. `qa` and `prod`: add required reviewers.
-3. No `AWS_ROLE_ARN` variable needed on either Environment for infra's
-   sake — `infra.yml` reads the repo-level variables from Step 4
-   regardless of which Environment (if any) a job is running under.
+2. Create all three (`dev`, `qa`, `prod`) if they don't already exist.
+3. `qa` and `prod`: add required reviewers. `dev`: leave unprotected —
+   `apply-terragrunt`/`seed-ecr-placeholder` still run fully
+   automatically there, it just runs under a real Environment now
+   instead of none at all.
+4. No `AWS_ROLE_ARN` variable needed on any of the three Environments for
+   infra's sake — `infra.yml` reads the repo-level variables from Step 4
+   regardless of which Environment a job is running under.
 
 ## Verifying it works
 
