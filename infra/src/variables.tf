@@ -151,6 +151,24 @@ variable "enable_authorizer" {
   default     = false
 }
 
+variable "authorizer_lambda_runtime" {
+  type        = string
+  description = "Authorizer Lambda runtime — must match the handler format if changed"
+  default     = "dotnet10"
+}
+
+variable "authorizer_lambda_timeout" {
+  type        = number
+  description = "Authorizer Lambda timeout in seconds"
+  default     = 5
+}
+
+variable "authorizer_lambda_memory_size" {
+  type        = number
+  description = "Authorizer Lambda memory in MB"
+  default     = 256
+}
+
 # --- database (Aurora PostgreSQL, module.aurora — task-api's database) ---
 # One cluster per environment, not a map like `services` — RDS Proxy and
 # per-tenant credentials are deliberately out of scope for now, see this

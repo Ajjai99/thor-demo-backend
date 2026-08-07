@@ -18,7 +18,7 @@ locals {
 }
 
 # Bootstrap placeholder — lets this resource exist before any real authorizer code is built/deployed. A real deploy pipeline overwrites the function code directly (aws lambda update-function-code); filename/source_code_hash are ignored below so Terraform never reverts that.
-data "archive_file" "placeholder" {
+data "archive_file" "thor-authorizer-archive-file" {
   type        = "zip"
   output_path = "${path.module}/placeholder.zip"
 
@@ -28,7 +28,7 @@ data "archive_file" "placeholder" {
   }
 }
 
-data "aws_iam_policy_document" "lambda_assume" {
+data "aws_iam_policy_document" "thor-lambda-authorizer-assume-policy-document" {
   statement {
     actions = ["sts:AssumeRole"]
 
@@ -39,19 +39,19 @@ data "aws_iam_policy_document" "lambda_assume" {
   }
 }
 
-resource "aws_iam_role" "authorizer" {
+resource "aws_iam_role" "thor-lambda-authorizer-role" {
   name               = "${local.name_prefix}-role"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+  assume_role_policy = data.aws_iam_policy_document.thor-lambda-authorizer-assume-policy-document.json
   tags               = var.tags
 }
 
-resource "aws_iam_role_policy_attachment" "logs" {
-  role       = aws_iam_role.authorizer.name
+resource "aws_iam_role_policy_attachment" "thor-lambda-authorizer-policy-attachment" {
+  role       = aws_iam_role.thor-lambda-authorizer-role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
 # Scoped to this environment's Aurora cluster/secret only — ExecuteStatement is the RDS Data API call the authorizer uses to look up a hashed key; GetSecretValue is required alongside it since Data API authenticates against the cluster via this secret.
-data "aws_iam_policy_document" "aurora_data_api" {
+data "aws_iam_policy_document" "aurora-data-api-policy-document" {
   statement {
     actions   = ["rds-data:ExecuteStatement"]
     resources = [var.aurora_cluster_arn]
@@ -65,27 +65,27 @@ data "aws_iam_policy_document" "aurora_data_api" {
 
 resource "aws_iam_role_policy" "aurora_data_api" {
   name   = "aurora-data-api-access"
-  role   = aws_iam_role.authorizer.id
-  policy = data.aws_iam_policy_document.aurora_data_api.json
+  role   = aws_iam_role.thor-lambda-authorizer-role.id
+  policy = data.aws_iam_policy_document.aurora-data-api-policy-document.json
 }
 
-resource "aws_cloudwatch_log_group" "authorizer" {
+resource "aws_cloudwatch_log_group" "thor-lambda-authorizer-logs" {
   name              = "/aws/lambda/${local.name_prefix}"
   retention_in_days = 30
   tags              = var.tags
 }
 
-resource "aws_lambda_function" "authorizer" {
+resource "aws_lambda_function" "thor-authorizer-lambda" {
   function_name = local.name_prefix
-  role          = aws_iam_role.authorizer.arn
-  runtime       = "dotnet10"
+  role          = aws_iam_role.thor-lambda-authorizer-role.arn
+  runtime = var.runtime
   # Matches backend/functions/Thor.Authorizer/src (assembly Thor.Authorizer, namespace Thor.Authorizer, class Function) — kept in sync with ignore_changes below only until a real deploy pipeline takes over.
   handler     = "Thor.Authorizer::Thor.Authorizer.Function::FunctionHandler"
-  timeout     = 5
-  memory_size = 256
+  timeout     = var.timeout
+  memory_size = var.memory_size
 
-  filename         = data.archive_file.placeholder.output_path
-  source_code_hash = data.archive_file.placeholder.output_base64sha256
+  filename         = data.archive_file.thor-authorizer-archive-file.output_path
+  source_code_hash = data.archive_file.thor-authorizer-archive-file.output_base64sha256
 
   environment {
     variables = {
@@ -100,7 +100,7 @@ resource "aws_lambda_function" "authorizer" {
     ignore_changes = [filename, source_code_hash, handler]
   }
 
-  depends_on = [aws_cloudwatch_log_group.authorizer, aws_iam_role_policy_attachment.logs, aws_iam_role_policy.aurora_data_api]
+  depends_on = [aws_cloudwatch_log_group.thor-lambda-authorizer-logs, aws_iam_role_policy_attachment.thor-lambda-authorizer-policy-attachment, aws_iam_role_policy.aurora_data_api]
 
   tags = var.tags
 }

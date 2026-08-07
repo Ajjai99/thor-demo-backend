@@ -92,8 +92,11 @@ inputs = {
   frontend_price_class = "PriceClass_100"
 
   # --- api gateway authorizer ---
-  # Off until real authorizer code + seeded API keys exist — leaves the proxy open (authorization = NONE) until then.
-  enable_authorizer = false
+  # Lambda API-key authorizer
+  enable_authorizer             = true
+  authorizer_lambda_runtime     = "dotnet10"
+  authorizer_lambda_timeout     = 5
+  authorizer_lambda_memory_size = 256
 
   tags = {}
 }

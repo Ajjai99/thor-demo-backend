@@ -9,20 +9,19 @@ variable "service_name" {
   default     = "thor"
 }
 
-variable "nlb_arn" {
+variable "nlb_listener_arn" {
   type        = string
-  description = "ARN of the NLB the VPC Link attaches to"
+  description = "ARN of the NLB's production listener — an HTTP API v2 private integration targets the listener ARN directly, not a DNS-based URI"
 }
 
-variable "nlb_dns_name" {
+variable "vpc_id" {
   type        = string
-  description = "DNS name of the NLB — the VPC Link integration's uri targets this directly, not the ARN"
+  description = "VPC the NLB lives in — the VPC Link's ENIs and their security group are provisioned here"
 }
 
-variable "nlb_listener_port" {
-  type        = number
-  description = "Port the NLB's production listener listens on"
-  default     = 80
+variable "private_subnet_ids" {
+  type        = list(string)
+  description = "Subnets the VPC Link's ENIs are placed in — same private subnets the NLB itself uses"
 }
 
 variable "tags" {

@@ -33,6 +33,11 @@ output "nlb_dns_names" {
   value = { for k, v in aws_lb.thor-nlb : k => v.dns_name }
 }
 
+output "nlb_listener_arns" {
+  description = "Map of service name -> NLB listener ARN, only populated for publicly-exposed services — an HTTP API v2 VPC Link private integration targets the listener ARN directly, not a DNS-based URI"
+  value       = { for k, v in aws_lb_listener.thor-nlb-listener : k => v.arn }
+}
+
 output "service_security_group_ids" {
   value = { for k, v in aws_security_group.service : k => v.id }
 }
