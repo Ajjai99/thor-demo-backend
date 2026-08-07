@@ -1,5 +1,5 @@
 name: Manifest write
-description: Writes a deploy/<service>-<environment>-image.json manifest and opens a PR against the downstream branch — merging that PR is what triggers the next environment's pipeline.
+description: Writes a deploy/<service>/<environment>-image.json manifest and opens a PR against the downstream branch — merging that PR is what triggers the next environment's pipeline.
 
 inputs:
   service:
@@ -30,8 +30,8 @@ runs:
 
     - shell: bash
       run: |
-        mkdir -p deploy
-        cat > "deploy/${{ inputs.service }}-${{ inputs.environment }}-image.json" <<EOF
+        mkdir -p "deploy/${{ inputs.service }}"
+        cat > "deploy/${{ inputs.service }}/${{ inputs.environment }}-image.json" <<EOF
         {
           "service": "${{ inputs.service }}",
           "environment": "${{ inputs.environment }}",
@@ -47,7 +47,7 @@ runs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add "deploy/${{ inputs.service }}-${{ inputs.environment }}-image.json"
+        git add "deploy/${{ inputs.service }}/${{ inputs.environment }}-image.json"
         git commit -m "chore(deploy): record ${{ inputs.service }} ${{ inputs.environment }} deployment (${{ inputs.digest }})" || echo "No changes to commit"
         git push
 
@@ -64,4 +64,4 @@ runs:
           Commit: `${{ inputs.commit_id }}`
 
           Merging this PR triggers the next stage's pipeline for `${{ inputs.service }}`.
-        add-paths: deploy/${{ inputs.service }}-${{ inputs.environment }}-image.json
+        add-paths: deploy/${{ inputs.service }}/${{ inputs.environment }}-image.json

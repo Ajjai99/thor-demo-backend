@@ -7,7 +7,7 @@ name: _deploy-core
 # into its own ECR to deploy. qa/prod never build from source and never
 # talk to an upstream environment's ECR directly anymore: they pull by
 # digest from JFrog, using the digest recorded in the upstream
-# environment's manifest file (deploy/<service>-<env>-image.json).
+# environment's manifest file (deploy/<service>/<env>-image.json).
 #
 # Every job that produces a manifest opens a PR against the downstream
 # branch (manifest-write composite) instead of writing it directly — a
@@ -192,8 +192,8 @@ jobs:
             TAG="manual-$(echo "${DIGEST}" | sed 's/.*@sha256://' | cut -c1-12)"
             echo "Using explicitly provided digest: ${DIGEST}"
           else
-            DIGEST=$(jq -r '.digest' "deploy/${{ inputs.service }}-dev-image.json")
-            TAG=$(jq -r '.commitId' "deploy/${{ inputs.service }}-dev-image.json")
+            DIGEST=$(jq -r '.digest' "deploy/${{ inputs.service }}/dev-image.json")
+            TAG=$(jq -r '.commitId' "deploy/${{ inputs.service }}/dev-image.json")
             echo "Resolved dev's manifest digest: ${DIGEST}"
           fi
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
@@ -298,8 +298,8 @@ jobs:
             TAG="manual-$(echo "${DIGEST}" | sed 's/.*@sha256://' | cut -c1-12)"
             echo "Using explicitly provided digest: ${DIGEST}"
           else
-            DIGEST=$(jq -r '.digest' "deploy/${{ inputs.service }}-qa-image.json")
-            TAG=$(jq -r '.commitId' "deploy/${{ inputs.service }}-qa-image.json")
+            DIGEST=$(jq -r '.digest' "deploy/${{ inputs.service }}/qa-image.json")
+            TAG=$(jq -r '.commitId' "deploy/${{ inputs.service }}/qa-image.json")
             echo "Resolved qa's manifest digest: ${DIGEST}"
           fi
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"

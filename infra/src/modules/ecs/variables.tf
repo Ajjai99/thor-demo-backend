@@ -61,12 +61,6 @@ variable "services" {
   }
 }
 
-variable "cross_account_pull_principal_arns" {
-  type        = list(string)
-  description = "IAM role ARNs (e.g. a downstream environment's deploy role, possibly in another AWS account) allowed to pull images from this environment's ECR repos. Empty by default — fill in once the downstream role actually exists (e.g. qa's terragrunt.hcl sets this to prod's deploy role ARN once the prod account/role are real)."
-  default     = []
-}
-
 variable "tags" {
   type        = map(string)
   description = "Additional resource-specific tags"

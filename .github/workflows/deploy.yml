@@ -4,17 +4,19 @@ name: Deploy
 #
 # Two real triggers:
 #   push to dev   -> mode: deploy   (dev builds from source)
-#   push to qa/main -> mode: promote (a merged deploy/<service>-<upstream-env>-image.json manifest PR is what got here — _deploy-core.yml reads it)
+#   push to qa/main -> mode: promote (a merged deploy/<service>/<upstream-env>-image.json manifest PR is what got here — _deploy-core.yml reads it)
 #   pull_request  -> preview only, calls backend-preview.yml directly (compile+unit-test, no Docker/AWS/JFrog — no manifest is ever produced or consumed by a preview)
 #   workflow_dispatch -> manual deploy/rollback, any environment, optionally pinned to an exact image_digest
 #
 # Path-aware: dorny/paths-filter decides which service(s) actually changed
 # — source changes only matter on a push to dev, manifest changes only
 # matter on a push to qa/main (a manifest PR merging into qa touches
-# deploy/<service>-dev-image.json; merging into main touches
-# deploy/<service>-qa-image.json — one broad per-service "manifest" filter
+# deploy/<service>/dev-image.json; merging into main touches
+# deploy/<service>/qa-image.json — one broad per-service "manifest" filter
 # covers both, since which specific file is relevant is already implied by
-# which branch this push landed on).
+# which branch this push landed on). Manifests live one subfolder per
+# service (deploy/<service>/<env>-image.json), not flattened, so the
+# `deploy/` folder itself doesn't turn into nine similarly-named files.
 
 on:
   push:
@@ -69,15 +71,15 @@ jobs:
             thor-source:
               - 'backend/services/thor/**'
             thor-manifest:
-              - 'deploy/thor-*.json'
+              - 'deploy/thor/*.json'
             task-api-source:
               - 'backend/services/task-api/**'
             task-api-manifest:
-              - 'deploy/task-api-*.json'
+              - 'deploy/task-api/*.json'
             intelligence-engine-source:
               - 'backend/services/intelligence-engine/**'
             intelligence-engine-manifest:
-              - 'deploy/intelligence-engine-*.json'
+              - 'deploy/intelligence-engine/*.json'
 
   context:
     if: github.event_name == 'push' || github.event_name == 'pull_request'

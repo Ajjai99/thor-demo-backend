@@ -14,7 +14,7 @@ inputs:
 
 outputs:
   task_definition_arn:
-    value: ${{ steps.task-def.outputs.arn }}
+    value: ${{ steps['task-def'].outputs.arn }}
 
 runs:
   using: composite
@@ -53,10 +53,10 @@ runs:
         aws ecs update-service \
           --cluster "thor-${{ inputs.environment }}" \
           --service "${{ inputs.service }}" \
-          --task-definition "${{ steps.task-def.outputs.arn }}" \
+          --task-definition "${{ steps['task-def'].outputs.arn }}" \
           >/dev/null
 
-        NEW_TASK_DEF="${{ steps.task-def.outputs.arn }}"
+        NEW_TASK_DEF="${{ steps['task-def'].outputs.arn }}"
         TIMEOUT_SECONDS=$(( ${{ inputs.timeout_minutes }} * 60 ))
         INTERVAL=15
         ELAPSED=0

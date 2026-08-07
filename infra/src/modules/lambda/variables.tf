@@ -23,3 +23,21 @@ variable "tags" {
   description = "Additional resource-specific tags"
   default     = {}
 }
+
+variable "runtime" {
+  type        = string
+  description = "Lambda runtime — must match the handler format (Assembly::Namespace.Class::Method) if changed"
+  default     = "dotnet10"
+}
+
+variable "timeout" {
+  type        = number
+  description = "Function timeout in seconds"
+  default     = 5
+}
+
+variable "memory_size" {
+  type        = number
+  description = "Function memory in MB"
+  default     = 256
+}
