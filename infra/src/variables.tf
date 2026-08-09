@@ -169,6 +169,11 @@ variable "authorizer_lambda_memory_size" {
   default     = 256
 }
 
+variable "authorizer_source_dir" {
+  type        = string
+  description = "Absolute path to lambda authorizer code"
+}
+
 # --- database (Aurora PostgreSQL, module.aurora — task-api's database) ---
 # One cluster per environment, not a map like `services` — RDS Proxy and
 # per-tenant credentials are deliberately out of scope for now, see this
