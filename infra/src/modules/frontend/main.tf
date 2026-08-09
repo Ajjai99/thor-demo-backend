@@ -13,12 +13,12 @@ data "aws_caller_identity" "current" {}
 
 locals {
   name_prefix = "thor-${var.environment}-frontend"
-  # Globally unique — bucket names share a namespace across all of AWS, not just this account.
+  # Globally unique — bucket names share a namespace across all of AWS
   bucket_name = "thor-frontend-${var.environment}-${data.aws_caller_identity.current.account_id}"
 }
 
 # Private bucket — no website hosting, no public ACLs. CloudFront reaches it through the origin access control below, never directly.
-resource "aws_s3_bucket" "this" {
+resource "aws_s3_bucket" "thor-fe-bucket" {
   bucket = local.bucket_name
 
   tags = merge(var.tags, {
@@ -26,8 +26,8 @@ resource "aws_s3_bucket" "this" {
   })
 }
 
-resource "aws_s3_bucket_public_access_block" "this" {
-  bucket = aws_s3_bucket.this.id
+resource "aws_s3_bucket_public_access_block" "thor-fe-bucket-pab" {
+  bucket = aws_s3_bucket.thor-fe-bucket.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -36,8 +36,8 @@ resource "aws_s3_bucket_public_access_block" "this" {
 }
 
 # BucketOwnerEnforced — object ACLs are disabled entirely, matching an OAC-fronted bucket where only the bucket policy (not ACLs) grants access.
-resource "aws_s3_bucket_ownership_controls" "this" {
-  bucket = aws_s3_bucket.this.id
+resource "aws_s3_bucket_ownership_controls" "thor-fe-bucket-ownership" {
+  bucket = aws_s3_bucket.thor-fe-bucket.id
 
   rule {
     object_ownership = "BucketOwnerEnforced"
@@ -58,7 +58,7 @@ resource "aws_cloudfront_distribution" "thor-fe-cdn" {
   price_class         = var.price_class
 
   origin {
-    domain_name              = aws_s3_bucket.this.bucket_regional_domain_name
+    domain_name              = aws_s3_bucket.thor-fe-bucket.bucket_regional_domain_name
     origin_id                = local.bucket_name
     origin_access_control_id = aws_cloudfront_origin_access_control.thor-fe-oac.id
   }
@@ -107,7 +107,7 @@ data "aws_iam_policy_document" "cloudfront_access" {
   statement {
     sid       = "AllowCloudFrontServicePrincipalReadOnly"
     actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.this.arn}/*"]
+    resources = ["${aws_s3_bucket.thor-fe-bucket.arn}/*"]
 
     principals {
       type        = "Service"
@@ -122,7 +122,7 @@ data "aws_iam_policy_document" "cloudfront_access" {
   }
 }
 
-resource "aws_s3_bucket_policy" "this" {
-  bucket = aws_s3_bucket.this.id
+resource "aws_s3_bucket_policy" "thor-fe-bucket-policy" {
+  bucket = aws_s3_bucket.thor-fe-bucket.id
   policy = data.aws_iam_policy_document.cloudfront_access.json
 }
