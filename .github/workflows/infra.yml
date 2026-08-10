@@ -20,6 +20,10 @@ on:
     branches: [dev, qa, main]
     paths: ["infra/**"]
 
+# .NET SDK version for root.hcl's before_hook (dotnet publish) — one place, same reasoning as terragrunt-setup's terraform_version/terragrunt_version defaults.
+env:
+  DOTNET_VERSION: "10.0.100"
+
 # Runs for the same branch happen one at a time, not in parallel, so two close-together pushes don't race each other. Never cancels a run partway through - stopping mid-apply could leave infrastructure half-changed.
 concurrency:
   group: infra-${{ github.event_name == 'push' && github.ref_name || github.base_ref }}
@@ -122,10 +126,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # root.hcl's before_hook runs scripts/publish-lambda-functions.sh on every plan/apply — needs the SDK installed first. Not needed by init/validate, which never evaluate archive_file's data source. Hardcoded for now, same as terragrunt-setup's terraform_version/terragrunt_version — assumes every function shares one SDK version; revisit if that stops being true.
+      # root.hcl's before_hook runs scripts/publish-lambda-functions.sh on every plan/apply — needs the SDK installed first. Not needed by init/validate, which never evaluate archive_file's data source. DOTNET_VERSION is defined once, workflow-level — assumes every function shares one SDK version; revisit if that stops being true.
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.0.100"
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - uses: ./.github/actions/terragrunt-setup
         with:
@@ -147,13 +151,23 @@ jobs:
           path: /tmp/tfplan.binary
           retention-days: 1
 
-      # terraform apply -no-color <planfile> doesn't re-invoke archive_file's Read (its inputs were already fully known at plan time), so it never re-zips — it just expects the zip this plan already built to still be on disk. Since apply-terragrunt is a separate runner, that exact zip has to cross over the same way the plan file does. if-no-files-found: ignore, since no zip exists at all when enable_authorizer is off for this environment.
+      # terraform apply -no-color <planfile> doesn't re-invoke archive_file's Read (its inputs were already fully known at plan time), so it never re-zips — it just expects the zip this plan already built to still be on disk. Since apply-terragrunt is a separate runner, that exact zip has to cross over the same way the plan file does. Tarred into one file rather than uploaded as a directory — upload-artifact's directory-structure preservation depends on how many files a path/glob matches (confirmed via a real failure: with only one lambda function today, it silently dropped the Thor.Authorizer/ prefix), whereas tar's own path handling is simple and fully deterministic regardless of file count.
+      - name: Tar lambda function build zips
+        if: steps.plan.outcome == 'success'
+        working-directory: ${{ github.workspace }}
+        run: |
+          if compgen -G "backend/functions/*/*.zip" > /dev/null; then
+            tar -czf /tmp/lambda-zips.tar.gz -C backend/functions .
+          else
+            echo "No lambda function zips found — nothing to tar (enable_authorizer is likely off for this environment)."
+          fi
+
       - name: Upload lambda function build zips
         if: steps.plan.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: lambda-zips-${{ needs.context.outputs.environment }}
-          path: ${{ github.workspace }}/backend/functions/*/*.zip
+          path: /tmp/lambda-zips.tar.gz
           retention-days: 1
           if-no-files-found: ignore
 
@@ -194,10 +208,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # root.hcl's before_hook runs scripts/publish-lambda-functions.sh on every plan/apply — needs the SDK installed first. Rebuilds independently from plan-terragrunt's own build — accepted risk that a non-identical rebuild here could make the saved plan look stale. Hardcoded, same as terragrunt-setup's terraform_version/terragrunt_version — assumes every function shares one SDK version; revisit if that stops being true.
+      # root.hcl's before_hook runs scripts/publish-lambda-functions.sh on every plan/apply — needs the SDK installed first. Rebuilds independently from plan-terragrunt's own build — accepted risk that a non-identical rebuild here could make the saved plan look stale. DOTNET_VERSION is defined once, workflow-level — assumes every function shares one SDK version; revisit if that stops being true.
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.0.100"
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - uses: ./.github/actions/terragrunt-setup
         with:
@@ -211,13 +225,23 @@ jobs:
           name: tfplan-${{ needs.context.outputs.environment }}
           path: /tmp
 
-      # Restores the exact zip(s) plan-terragrunt's archive_file already built, at the same backend/functions/<Name>/*.zip paths — apply never re-invokes archive_file's Read, it just expects the file to be there. continue-on-error, not conditional: no artifact exists at all when enable_authorizer was off for this environment's plan, which is fine — nothing in this apply would reference it either.
+      # Restores the exact zip(s) plan-terragrunt's archive_file already built — apply never re-invokes archive_file's Read, it just expects the file to be there. continue-on-error, not conditional: no artifact exists at all when enable_authorizer was off for this environment's plan, which is fine — nothing in this apply would reference it either.
       - name: Download lambda function build zips
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: lambda-zips-${{ needs.context.outputs.environment }}
-          path: ${{ github.workspace }}
+          path: /tmp
+
+      # Extracts back to the exact same relative layout the tar step recorded (backend/functions/<Name>/...), landing each zip at exactly the absolute path its archive_file's output_path expects. Skips cleanly if the download above found nothing.
+      - name: Untar lambda function build zips
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ -f /tmp/lambda-zips.tar.gz ]; then
+            tar -xzf /tmp/lambda-zips.tar.gz -C backend/functions
+          else
+            echo "No lambda-zips artifact downloaded — nothing to extract."
+          fi
 
       # Applies the exact plan file plan-terragrunt produced — no -auto-approve needed, applying a saved plan is already non-interactive. If the underlying state changed since that plan was made, this fails with a stale-plan error instead of silently applying something different than what was reviewed.
       - name: terragrunt apply
