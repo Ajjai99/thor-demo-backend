@@ -147,6 +147,16 @@ jobs:
           path: /tmp/tfplan.binary
           retention-days: 1
 
+      # terraform apply -no-color <planfile> doesn't re-invoke archive_file's Read (its inputs were already fully known at plan time), so it never re-zips — it just expects the zip this plan already built to still be on disk. Since apply-terragrunt is a separate runner, that exact zip has to cross over the same way the plan file does. if-no-files-found: ignore, since no zip exists at all when enable_authorizer is off for this environment.
+      - name: Upload lambda function build zips
+        if: steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-zips-${{ needs.context.outputs.environment }}
+          path: ${{ github.workspace }}/backend/functions/*/*.zip
+          retention-days: 1
+          if-no-files-found: ignore
+
       # Every listened-for pull_request type here is a live, open PR (closed isn't in the list) — on a push-triggered run this is simply skipped, no PR to comment on.
       - name: Post plan to PR
         if: github.event_name == 'pull_request'
@@ -200,6 +210,14 @@ jobs:
         with:
           name: tfplan-${{ needs.context.outputs.environment }}
           path: /tmp
+
+      # Restores the exact zip(s) plan-terragrunt's archive_file already built, at the same backend/functions/<Name>/*.zip paths — apply never re-invokes archive_file's Read, it just expects the file to be there. continue-on-error, not conditional: no artifact exists at all when enable_authorizer was off for this environment's plan, which is fine — nothing in this apply would reference it either.
+      - name: Download lambda function build zips
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: lambda-zips-${{ needs.context.outputs.environment }}
+          path: ${{ github.workspace }}
 
       # Applies the exact plan file plan-terragrunt produced — no -auto-approve needed, applying a saved plan is already non-interactive. If the underlying state changed since that plan was made, this fails with a stale-plan error instead of silently applying something different than what was reviewed.
       - name: terragrunt apply
