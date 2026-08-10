@@ -1,2 +1,3 @@
-backend/functions/Thor.Authorizer/publish/
-backend/functions/Thor.Authorizer/*.zip
+backend/functions/*/publish/
+backend/functions/*/*.zip
+backend/functions/*/.publish-hash

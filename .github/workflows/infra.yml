@@ -122,6 +122,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # root.hcl's before_hook runs scripts/publish-lambda-functions.sh on every plan/apply — needs the SDK installed first. Not needed by init/validate, which never evaluate archive_file's data source. Hardcoded for now, same as terragrunt-setup's terraform_version/terragrunt_version — assumes every function shares one SDK version; revisit if that stops being true.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.100"
+
       - uses: ./.github/actions/terragrunt-setup
         with:
           role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
@@ -178,6 +183,11 @@ jobs:
         working-directory: infra/envs/${{ needs.context.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
+
+      # root.hcl's before_hook runs scripts/publish-lambda-functions.sh on every plan/apply — needs the SDK installed first. Rebuilds independently from plan-terragrunt's own build — accepted risk that a non-identical rebuild here could make the saved plan look stale. Hardcoded, same as terragrunt-setup's terraform_version/terragrunt_version — assumes every function shares one SDK version; revisit if that stops being true.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.100"
 
       - uses: ./.github/actions/terragrunt-setup
         with:
