@@ -67,3 +67,12 @@ EOF
 inputs = {
   environment = local.environment
 }
+
+# Publishes every Lambda function's real code before plan/apply, so archive_file has something real to zip — Terraform can't compile C#. get_repo_root() keeps this absolute, since Terragrunt only copies infra/src into its working directory.
+terraform {
+  before_hook "publish_lambda_functions" {
+    commands     = ["plan", "apply"]
+    execute      = ["${get_repo_root()}/scripts/publish-lambda-functions.sh"]
+    run_on_error = false
+  }
+}

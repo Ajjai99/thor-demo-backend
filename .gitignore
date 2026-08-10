@@ -1,0 +1,3 @@
+backend/functions/*/publish/
+backend/functions/*/*.zip
+backend/functions/*/.publish-hash

@@ -41,3 +41,8 @@ variable "memory_size" {
   description = "Function memory in MB"
   default     = 256
 }
+
+variable "authorizer_source_dir" {
+  type        = string
+  description = "Absolute path to lambda authorizer code"
+}

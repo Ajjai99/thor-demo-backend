@@ -88,9 +88,10 @@ module "lambda" {
   aurora_secret_arn    = module.aurora.master_user_secret_arn
   aurora_database_name = module.aurora.database_name
 
-  runtime     = var.authorizer_lambda_runtime
-  timeout     = var.authorizer_lambda_timeout
-  memory_size = var.authorizer_lambda_memory_size
+  runtime               = var.authorizer_lambda_runtime
+  timeout               = var.authorizer_lambda_timeout
+  memory_size           = var.authorizer_lambda_memory_size
+  authorizer_source_dir = var.authorizer_source_dir
 
   tags = var.tags
 }

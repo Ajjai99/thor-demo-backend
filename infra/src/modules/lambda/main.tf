@@ -17,15 +17,11 @@ locals {
   name_prefix = "thor-${var.environment}-api-key-authorizer"
 }
 
-# Bootstrap placeholder — lets this resource exist before any real authorizer code is built/deployed. A real deploy pipeline overwrites the function code directly (aws lambda update-function-code); filename/source_code_hash are ignored below so Terraform never reverts that.
+# source_dir is an absolute path (terragrunt.hcl builds it with get_repo_root(), not path.module) since Terragrunt only copies infra/src into its working directory — backend/functions/Thor.Authorizer isn't reachable via a relative path. output_path is derived from that same absolute path for the same reason: a path under path.module would only exist in whichever ephemeral cache copy ran `plan`, not necessarily the one `apply` runs from. Requires `dotnet publish` into authorizer_source_dir before terragrunt runs — Terraform zips, it doesn't compile.
 data "archive_file" "thor-authorizer-archive-file" {
   type        = "zip"
-  output_path = "${path.module}/placeholder.zip"
-
-  source {
-    content  = "Bootstrap placeholder — not a real authorizer implementation. Replace via a real deploy pipeline."
-    filename = "PLACEHOLDER"
-  }
+  source_dir  = var.authorizer_source_dir
+  output_path = "${var.authorizer_source_dir}/../thor-authorizer-build.zip"
 }
 
 data "aws_iam_policy_document" "thor-lambda-authorizer-assume-policy-document" {
@@ -93,11 +89,6 @@ resource "aws_lambda_function" "thor-authorizer-lambda" {
       AURORA_SECRET_ARN    = var.aurora_secret_arn
       AURORA_DATABASE_NAME = var.aurora_database_name
     }
-  }
-
-  # A real deploy pipeline owns pushing actual authorizer code/handler — this resource just needs to exist for API Gateway to attach to.
-  lifecycle {
-    ignore_changes = [filename, source_code_hash, handler]
   }
 
   depends_on = [aws_cloudwatch_log_group.thor-lambda-authorizer-logs, aws_iam_role_policy_attachment.thor-lambda-authorizer-policy-attachment, aws_iam_role_policy.aurora_data_api]
