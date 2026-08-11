@@ -77,6 +77,16 @@ module "api_gateway" {
   tags = var.tags
 }
 
+# Salt for Thor.Authorizer's PBKDF2 API-key hashing — value set out-of-band, not by Terraform.
+module "secrets" {
+  count = var.enable_authorizer ? 1 : 0
+
+  source = "./modules/secrets"
+
+  environment = var.environment
+  tags        = var.tags
+}
+
 # Validates API keys against Aurora via RDS Data API — no VPC needed.
 module "lambda" {
   count = var.enable_authorizer ? 1 : 0
@@ -87,6 +97,8 @@ module "lambda" {
   aurora_cluster_arn   = module.aurora.cluster_arn
   aurora_secret_arn    = module.aurora.master_user_secret_arn
   aurora_database_name = module.aurora.database_name
+
+  authorizer_salt_secret_arn = module.secrets[0].authorizer_salt_secret_arn
 
   runtime               = var.authorizer_lambda_runtime
   timeout               = var.authorizer_lambda_timeout

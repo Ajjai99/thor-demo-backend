@@ -18,6 +18,11 @@ variable "aurora_database_name" {
   description = "Database name the authorizer queries for hashed API keys"
 }
 
+variable "authorizer_salt_secret_arn" {
+  type        = string
+  description = "Secrets Manager ARN of the PBKDF2 salt — passed to the function as THOR_AUTHORIZER_SALT_SECRET_ID and used to scope secretsmanager:GetSecretValue"
+}
+
 variable "tags" {
   type        = map(string)
   description = "Additional resource-specific tags"
