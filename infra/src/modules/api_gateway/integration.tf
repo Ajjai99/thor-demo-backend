@@ -1,4 +1,4 @@
-# Catch-all proxy to the NLB listener. One integration, two routes (root + {proxy+}) — v2 lets routes share an integration.
+# Demo GET/POST routes, not a catch-all ANY — other methods get no route. One integration, four routes.
 
 resource "aws_apigatewayv2_integration" "proxy" {
   api_id = aws_apigatewayv2_api.thor-apigw-api.id
@@ -11,18 +11,36 @@ resource "aws_apigatewayv2_integration" "proxy" {
   payload_format_version = "1.0"
 }
 
-resource "aws_apigatewayv2_route" "proxy_root" {
+resource "aws_apigatewayv2_route" "proxy_root_get" {
   api_id    = aws_apigatewayv2_api.thor-apigw-api.id
-  route_key = "ANY /"
+  route_key = "GET /"
   target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
 
   authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"
   authorizer_id      = var.enable_authorizer ? aws_apigatewayv2_authorizer.thor-api-key[0].id : null
 }
 
-resource "aws_apigatewayv2_route" "proxy" {
+resource "aws_apigatewayv2_route" "proxy_root_post" {
   api_id    = aws_apigatewayv2_api.thor-apigw-api.id
-  route_key = "ANY /{proxy+}"
+  route_key = "POST /"
+  target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
+
+  authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"
+  authorizer_id      = var.enable_authorizer ? aws_apigatewayv2_authorizer.thor-api-key[0].id : null
+}
+
+resource "aws_apigatewayv2_route" "proxy_get" {
+  api_id    = aws_apigatewayv2_api.thor-apigw-api.id
+  route_key = "GET /{proxy+}"
+  target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
+
+  authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"
+  authorizer_id      = var.enable_authorizer ? aws_apigatewayv2_authorizer.thor-api-key[0].id : null
+}
+
+resource "aws_apigatewayv2_route" "proxy_post" {
+  api_id    = aws_apigatewayv2_api.thor-apigw-api.id
+  route_key = "POST /{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
 
   authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"

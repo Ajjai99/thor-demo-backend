@@ -12,7 +12,7 @@ terraform {
 locals {
   name_prefix = "thor-${var.environment}-aurora"
 
-  # Falls back to a per-environment Postgres database name when left blank — underscores, not hyphens, since unquoted Postgres identifiers can't contain them.
+  # Falls back to a per-environment name — underscores, since unquoted Postgres identifiers can't use hyphens.
   database_name = var.database_name != "" ? var.database_name : "thor_${var.environment}_db"
 }
 
@@ -25,7 +25,7 @@ resource "aws_db_subnet_group" "aurora_subnet_group" {
   })
 }
 
-# No inline ingress — kept in a separate aws_vpc_security_group_ingress_rule below, same reasoning as modules/ecs/security_groups.tf (avoids the same Terraform dependency-cycle risk).
+# No inline ingress — separate rule below, same dependency-cycle reasoning as ecs/security_groups.tf.
 resource "aws_security_group" "aurora_security_group" {
   name        = "${local.name_prefix}-sg"
   description = "Aurora PostgreSQL - ingress from task-api only, egress scoped to the VPC"
@@ -44,7 +44,7 @@ resource "aws_security_group" "aurora_security_group" {
   })
 }
 
-# Gated on create_task_api_ingress (a plain bool, = var.enable_compute), not a null-check on task_api_security_group_id — that value can be unknown mid-apply (still-changing security group), which breaks count's plan-time-known requirement; a plain bool doesn't.
+# Gated on the plain bool create_task_api_ingress, not a null-check — an unknown mid-apply value would break count.
 resource "aws_vpc_security_group_ingress_rule" "task_api" {
   count = var.create_task_api_ingress ? 1 : 0
 
@@ -60,7 +60,7 @@ resource "aws_vpc_security_group_ingress_rule" "task_api" {
   })
 }
 
-# manage_master_user_password: AWS-generated/rotated in Secrets Manager, never touches Terraform state. enable_http_endpoint: RDS Data API, so a GitHub-hosted CI runner can reach this without VPC network access.
+# manage_master_user_password: AWS-rotated in Secrets Manager, never in state. enable_http_endpoint: RDS Data API, reachable from CI with no VPC access.
 resource "aws_rds_cluster" "aurora_cluster" {
   cluster_identifier     = local.name_prefix
   engine                 = "aurora-postgresql"
@@ -89,7 +89,7 @@ resource "aws_rds_cluster" "aurora_cluster" {
   })
 }
 
-# Serverless v2 still requires at least one instance resource even though capacity itself is elastic — this is what actually runs, the cluster above is just the control plane/storage layer.
+# Serverless v2 still needs one instance resource — this is what actually runs; the cluster above is storage/control only.
 resource "aws_rds_cluster_instance" "aurora_instance" {
   identifier         = "${local.name_prefix}-instance"
   cluster_identifier = aws_rds_cluster.aurora_cluster.id

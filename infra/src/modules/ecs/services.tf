@@ -1,7 +1,7 @@
 locals {
   name_prefix = { for k, v in var.services : k => "thor-${var.environment}-${k}" }
 
-  # Falls back to that service's own ECR repo at the "latest" tag when container_image is left blank.
+  # Falls back to that service's own ECR repo at "latest" when container_image is blank.
   resolved_image = {
     for k, v in local.active_services : k =>
     v.container_image != "" ? v.container_image : "${aws_ecr_repository.thor-ecr-repo[k].repository_url}:latest"
@@ -84,7 +84,7 @@ resource "aws_ecs_service" "thor-svc" {
   deployment_minimum_healthy_percent = each.value.min_healthy_percent
   deployment_maximum_percent         = each.value.max_percent
 
-  # Automatically rolls back to the last known-good revision if new tasks fail health checks.
+  # Rolls back to the last known-good revision if new tasks fail health checks.
   deployment_circuit_breaker {
     enable   = true
     rollback = true
@@ -118,7 +118,7 @@ resource "aws_ecs_service" "thor-svc" {
     type = "ECS"
   }
 
-  # Native ECS blue/green, no CodeDeploy — works for task-api/intelligence-engine too via a task-set swap, no ALB required.
+  # Native ECS blue/green, no CodeDeploy — a task-set swap, no ALB needed.
   deployment_configuration {
     strategy             = each.value.deployment_strategy
     bake_time_in_minutes = each.value.deployment_strategy == "BLUE_GREEN" ? each.value.bake_time_in_minutes : null
@@ -139,13 +139,13 @@ resource "aws_ecs_service" "thor-svc" {
     }
   }
 
-  # CI/CD updates task_definition/desired_count, and Custodian-vs-SCP (see main.tf) means tags/tags_all can never be reconciled either — Terraform must ignore both.
-  # load_balancer temporarily NOT ignored: needed for one apply so a deployment_strategy change (e.g. ROLLING -> BLUE_GREEN) can actually push its required advanced_configuration through. Re-add load_balancer here once this apply succeeds, since blue/green's live primary-target-group swap needs it ignored again afterward.
+  # CI/CD owns task_definition/desired_count; tags/tags_all can't reconcile with Custodian (see main.tf) — ignore all three.
+  # load_balancer temporarily NOT ignored: needed for one apply to push a deployment_strategy change through. Re-add once that apply succeeds.
   lifecycle {
     ignore_changes = [task_definition, desired_count, tags, tags_all]
   }
 
-  # Depends on all instances of aws_lb_listener.thor-nlb-listener, which is zero for services with no listener — no conditional needed.
+  # Depends on every listener instance; zero for services with none — no conditional needed.
   depends_on = [aws_lb_listener.thor-nlb-listener]
 
   tags = var.tags

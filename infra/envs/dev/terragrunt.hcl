@@ -96,7 +96,7 @@ inputs = {
   authorizer_lambda_runtime     = "dotnet10"
   authorizer_lambda_timeout     = 60  # seconds
   authorizer_lambda_memory_size = 512 # MB
-  # Absolute path — get_repo_root() resolves to the real repo root via git, not Terragrunt's ephemeral cache copy, so this stays valid no matter which cache copy Terraform runs from. dotnet publish must have already written here before terragrunt runs.
+  # get_repo_root() stays valid across any Terragrunt cache copy. dotnet publish must have already written here.
   authorizer_source_dir = "${get_repo_root()}/backend/functions/Thor.Authorizer/publish"
 
   tags = {}

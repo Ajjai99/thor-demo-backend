@@ -17,7 +17,7 @@ locals {
   name_prefix = "thor-${var.environment}-api-key-authorizer"
 }
 
-# source_dir is an absolute path (terragrunt.hcl builds it with get_repo_root(), not path.module) since Terragrunt only copies infra/src into its working directory — backend/functions/Thor.Authorizer isn't reachable via a relative path. output_path is derived from that same absolute path for the same reason: a path under path.module would only exist in whichever ephemeral cache copy ran `plan`, not necessarily the one `apply` runs from. Requires `dotnet publish` into authorizer_source_dir before terragrunt runs — Terraform zips, it doesn't compile.
+# source_dir/output_path are absolute (via get_repo_root()) since Terragrunt only copies infra/src, not backend/. Requires dotnet publish into authorizer_source_dir first — Terraform zips, it doesn't compile.
 data "archive_file" "thor-authorizer-archive-file" {
   type        = "zip"
   source_dir  = var.authorizer_source_dir
@@ -46,7 +46,7 @@ resource "aws_iam_role_policy_attachment" "thor-lambda-authorizer-policy-attachm
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Scoped to this environment's Aurora cluster/secret only — ExecuteStatement is the RDS Data API call the authorizer uses to look up a hashed key; GetSecretValue is required alongside it since Data API authenticates against the cluster via this secret.
+# Scoped to this environment's Aurora cluster/secret — ExecuteStatement looks up the key, GetSecretValue authenticates Data API.
 data "aws_iam_policy_document" "aurora-data-api-policy-document" {
   statement {
     actions   = ["rds-data:ExecuteStatement"]
@@ -75,7 +75,7 @@ resource "aws_lambda_function" "thor-authorizer-lambda" {
   function_name = local.name_prefix
   role          = aws_iam_role.thor-lambda-authorizer-role.arn
   runtime = var.runtime
-  # Matches backend/functions/Thor.Authorizer/src (assembly Thor.Authorizer, namespace Thor.Authorizer, class Function) — kept in sync with ignore_changes below only until a real deploy pipeline takes over.
+  # Matches Thor.Authorizer's assembly/namespace/class (backend/functions/Thor.Authorizer/src).
   handler     = "Thor.Authorizer::Thor.Authorizer.Function::FunctionHandler"
   timeout     = var.timeout
   memory_size = var.memory_size
