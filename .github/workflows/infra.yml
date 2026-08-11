@@ -72,7 +72,6 @@ jobs:
         working-directory: infra/envs/${{ needs.context.outputs.environment }}
     env:
       TG_NON_INTERACTIVE: "true"
-      TG_BACKEND_BOOTSTRAP: "true"
     steps:
       - uses: actions/checkout@v4
 
