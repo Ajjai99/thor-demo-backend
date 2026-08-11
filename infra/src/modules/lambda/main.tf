@@ -93,5 +93,10 @@ resource "aws_lambda_function" "thor-authorizer-lambda" {
 
   depends_on = [aws_cloudwatch_log_group.thor-lambda-authorizer-logs, aws_iam_role_policy_attachment.thor-lambda-authorizer-policy-attachment, aws_iam_role_policy.aurora_data_api]
 
+  # Custodian auto-tags this after creation and an SCP blocks removing it (see ecs/main.tf) — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
+
   tags = var.tags
 }
