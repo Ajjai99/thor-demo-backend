@@ -7,7 +7,7 @@ applies Terraform/Terragrunt changes under `infra/` for `dev`, `qa`, and
 
 ## Overview
 
-`infra.yml` needs four things in place before it can do anything:
+`infra.yml` needs five things in place before it can do anything:
 
 1. Each environment's real AWS account ID, filled into `infra/root.hcl`.
 2. A GitHub OIDC identity provider registered in AWS.
@@ -18,6 +18,9 @@ applies Terraform/Terragrunt changes under `infra/` for `dev`, `qa`, and
    `PROD_AWS_ROLE_ARN`/`AWS_REGION`) plus the `dev`/`qa`/`prod` GitHub
    Environments (already needed by backend deploy) — `qa`/`prod`
    configured with required reviewers, `dev` left unprotected.
+5. A `JFROG_ACCESS_TOKEN` repo secret — Terraform state now lives in
+   JFrog Artifactory, not S3, and every job running a `terragrunt`
+   command needs this to authenticate to it.
 
 **File location:** `.github/workflows/infra.yml`
 
@@ -46,17 +49,48 @@ environment's real AWS account ID:
 
 ```hcl
 account_map = {
-  dev  = { account_name = "dev",  account_id = "<DEV_ACCOUNT_ID>",  aws_region = "us-east-1" }
-  qa   = { account_name = "qa",   account_id = "<QA_ACCOUNT_ID>",   aws_region = "us-east-1" }
-  prod = { account_name = "prod", account_id = "<PROD_ACCOUNT_ID>", aws_region = "us-east-1" }
+  dev = {
+    account_id = "<DEV_ACCOUNT_ID>"
+    aws_region = "us-east-1"
+  }
+  qa = {
+    account_id = "<QA_ACCOUNT_ID>" # same account as dev
+    aws_region = "us-east-1"
+  }
+  prod = {
+    account_id = "<PROD_ACCOUNT_ID>" # isolated from dev/qa
+    aws_region = "us-east-1"
+  }
 }
 ```
 
-This isn't cosmetic — `account_id` is what builds the S3 state bucket's
-name (`thor-terraform-state-<account_id>`), so a blank or wrong value
-here means `init-terragrunt` can't find or auto-create the right bucket.
+`account_id` isn't read by any Terraform logic today — state lives in
+JFrog Artifactory (Step 2 below), not an account-scoped S3 bucket, so
+nothing in this repo derives a resource name from it. It's still worth
+filling in accurately: it documents which of the two AWS accounts each
+environment actually lives in (dev and qa share one, prod is isolated),
+an assumption the IAM steps below rely on.
 
-## Step 2: Create the OIDC identity provider (AWS Console)
+## Step 2: Configure the JFrog Artifactory state backend
+
+Terraform state lives in JFrog Artifactory (a `remote`/TFC-compatible
+backend, configured via `infra/root.hcl`'s `generate "backend"` block —
+not something this guide's steps touch), not S3. Every job that runs a
+`terragrunt` command authenticates to it the same way `terraform login`
+would locally, but non-interactively:
+
+1. In the JFrog instance, generate an access token scoped to the
+   `terraform-state-local` repository (or whichever repo `root.hcl`'s
+   `repo_name` points at).
+2. **Repo → Settings → Secrets and variables → Actions → Secrets** (repo
+   level): add `JFROG_ACCESS_TOKEN` with that token's value.
+3. `infra.yml` already wires this up — its workflow-level `env` sets
+   `TF_TOKEN_trialc6mgth_jfrog_io: ${{ secrets.JFROG_ACCESS_TOKEN }}`. The
+   env var's name must match the backend's `hostname` (dots become
+   underscores); if `root.hcl`'s `jfrog_hostname` ever changes, this env
+   var name has to change with it.
+
+## Step 3: Create the OIDC identity provider (AWS Console)
 
 Once per AWS account:
 
@@ -66,14 +100,14 @@ Once per AWS account:
 4. Audience: `sts.amazonaws.com`
 5. **Add provider**
 
-## Step 3: Create the three deploy roles (AWS Console)
+## Step 4: Create the three deploy roles (AWS Console)
 
 Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
 `deploy-dev`/`deploy-qa`/`deploy-prod`.
 
 1. **IAM → Roles → Create role**
 2. Trusted entity type: **Web identity**
-3. Identity provider: the one from Step 2
+3. Identity provider: the one from Step 3
 4. Audience: `sts.amazonaws.com`
 5. Skip the console's repo/branch fields (only support one combo — each of
    these roles needs several trusted at once). Create the role, then edit
@@ -218,12 +252,6 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
          "Resource": ["arn:aws:s3:::thor-frontend-<environment>-*", "arn:aws:s3:::thor-frontend-<environment>-*/*"]
        },
        {
-         "Sid": "S3TerraformState",
-         "Effect": "Allow",
-         "Action": ["s3:*"],
-         "Resource": ["arn:aws:s3:::thor-terraform-state-*", "arn:aws:s3:::thor-terraform-state-*/*"]
-       },
-       {
          "Sid": "Rds",
          "Effect": "Allow",
          "Action": ["rds:*"],
@@ -273,10 +301,10 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    ```
 
    **Scoped to `thor-<environment>-*`** (or a close variant): ECR, ECS,
-   load balancing, S3 (both the frontend bucket and, separately, the
-   Terraform state bucket — which doesn't carry `<environment>` in its
-   name at all, since it's per-account not per-environment), RDS/RDS
-   Data API, Lambda, CloudWatch Logs, and IAM role management/`PassRole`.
+   load balancing, the S3 frontend bucket, RDS/RDS Data API, Lambda,
+   CloudWatch Logs, and IAM role management/`PassRole`. No S3 statement
+   for Terraform state — that lives in JFrog Artifactory (Step 2), not an
+   S3 bucket this role needs access to.
 
    **Left as `Resource: "*"` on purpose, not by oversight:**
    - **EC2** — VPC/subnet/security-group IDs (`vpc-xxxxx`) are AWS-random,
@@ -303,9 +331,9 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    simply missing.
 
 7. Name the role (`deploy-dev`/`deploy-qa`/`deploy-prod`) and copy its
-   **ARN** — needed in Step 4.
+   **ARN** — needed in Step 5.
 
-## Step 4: Set the repo-level variables
+## Step 5: Set the repo-level variables
 
 **Repo → Settings → Secrets and variables → Actions → Variables** (repo
 level, not environment level):
@@ -315,7 +343,7 @@ level, not environment level):
 - `PROD_AWS_ROLE_ARN` = `deploy-prod`'s ARN
 - `AWS_REGION` (optional — defaults to `us-east-1` if unset)
 
-## Step 5: Configure the `dev`/`qa`/`prod` GitHub Environments
+## Step 6: Configure the `dev`/`qa`/`prod` GitHub Environments
 
 These are the **same** Environments the backend deploy pipeline already
 needs — no infra-specific Environments to create.
@@ -327,7 +355,7 @@ needs — no infra-specific Environments to create.
    automatically there, it just runs under a real Environment now
    instead of none at all.
 4. No `AWS_ROLE_ARN` variable needed on any of the three Environments for
-   infra's sake — `infra.yml` reads the repo-level variables from Step 4
+   infra's sake — `infra.yml` reads the repo-level variables from Step 5
    regardless of which Environment a job is running under.
 
 ## Verifying it works
