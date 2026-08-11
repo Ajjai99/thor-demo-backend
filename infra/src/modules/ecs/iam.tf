@@ -9,7 +9,7 @@ data "aws_iam_policy_document" "ecs_assume" {
   }
 }
 
-# One execution role per service (never shared), scoped to only the secret ARNs that service actually uses.
+# One execution role per service, scoped to only the secrets that service uses.
 resource "aws_iam_role" "execution" {
   for_each = local.active_services
 
@@ -42,7 +42,7 @@ resource "aws_iam_role_policy" "execution_secrets" {
   policy = each.value.json
 }
 
-# Task role — the application's own runtime permissions; X-Ray is the only baseline grant, add more per service as needed (e.g. Bedrock, DB access).
+# Task role — the app's own runtime permissions. X-Ray is the only baseline grant.
 resource "aws_iam_role" "task" {
   for_each = local.active_services
 

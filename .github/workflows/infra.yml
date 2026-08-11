@@ -1,15 +1,14 @@
 name: Infra
 
-# This workflow reviews and applies infrastructure changes (Terraform, via Terragrunt) for dev, qa, and prod.
+# Reviews and applies Terraform/Terragrunt changes for dev, qa, prod.
 #
-# On a pull request: runs 4 read-only checks (init, validate+lint, plan) and stops - nothing is changed yet.
-# On a push (i.e. after a PR merges): runs those same checks, then actually applies the change - automatically for dev, or after approval for qa/prod.
+# PR: read-only checks (init, validate+lint, plan), nothing changes.
+# Push: same checks, then applies — auto for dev, after approval for qa/prod.
+# Both triggers exist so a merge (which fires both events) only applies once, via the push side.
 #
-# Both `pull_request` and `push` are used (instead of one trigger checking "was this merged?") because a single merge fires both events - reacting to both would apply the change twice. Only applying on `push` avoids that.
+# AWS roles are repo-level vars (DEV/QA/PROD_AWS_ROLE_ARN), picked by environment. init/validate/plan are ungated (read-only); apply-terragrunt and seed-ecr-placeholder run under real dev/qa/prod GitHub Environments, shared with backend deploy — only qa/prod require review.
 #
-# AWS role resolution is repo-level, not GitHub-Environment-level: DEV_AWS_ROLE_ARN / QA_AWS_ROLE_ARN / PROD_AWS_ROLE_ARN repo variables, picked with a chained &&/|| expression on context's environment output, rather than via a per-environment vars.AWS_ROLE_ARN. init/validate/plan run fully ungated - they're read-only, and never set a GitHub Environment for any branch. apply-terragrunt and seed-ecr-placeholder are the only jobs that set a GitHub Environment - dev/qa/prod, the same three the backend deploy pipeline already uses. Only qa/prod have a required-reviewer rule configured, so dev still applies automatically despite running under a real Environment now.
-#
-# Everything lives in this one file instead of being split into reusable pieces, since each run only ever targets one environment at a time.
+# One file, not split up, since each run only ever targets one environment.
 
 on:
   pull_request:
@@ -20,14 +19,13 @@ on:
     branches: [dev, qa, main]
     paths: ["infra/**"]
 
-# .NET SDK version for root.hcl's before_hook (dotnet publish) — one place, same reasoning as terragrunt-setup's terraform_version/terragrunt_version defaults.
-#
-# TF_TOKEN_<hostname, dots as underscores> is how Terraform's remote backend (root.hcl's state backend, trialc6mgth.jfrog.io) authenticates non-interactively — this is what `terraform login`'s browser OAuth flow does locally, but CI can't run a browser, so this env var is the documented CI-equivalent. Needed by every job that runs any terragrunt command against a real backend (init/validate/plan/apply all trigger an implicit backend init) — set once here rather than per-job.
+# DOTNET_VERSION: SDK version for root.hcl's before_hook (dotnet publish), one place.
+# TF_TOKEN_...: non-interactive auth for the JFrog remote state backend — CI's equivalent of `terraform login`. Needed by every job running a terragrunt command.
 env:
   DOTNET_VERSION: "10.0.100"
   TF_TOKEN_trialc6mgth_jfrog_io: ${{ secrets.JFROG_ACCESS_TOKEN }}
 
-# Runs for the same branch happen one at a time, not in parallel, so two close-together pushes don't race each other. Never cancels a run partway through - stopping mid-apply could leave infrastructure half-changed.
+# One run per branch at a time; never cancels mid-run to avoid a half-applied state.
 concurrency:
   group: infra-${{ github.event_name == 'push' && github.ref_name || github.base_ref }}
   cancel-in-progress: false
@@ -83,7 +81,7 @@ jobs:
           role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
           region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
-      # -reconfigure: without it, a changed remote_state/provider block in root.hcl fails hard ("Error: Backend configuration changed") instead of picking up the new config — confirmed harmless on a genuinely fresh init too (today's normal case, since every job checks out clean).
+      # -reconfigure: picks up backend/provider changes instead of erroring; harmless on a fresh init too.
       - name: terragrunt init
         run: terragrunt init -reconfigure -no-color
 
@@ -104,18 +102,21 @@ jobs:
       - name: terragrunt validate
         run: terragrunt validate -no-color
 
-      # Only touches *.hcl files (root.hcl, envs/*/terragrunt.hcl) — recursive by default, so this alone covers every environment's terragrunt.hcl, not just the triggering one.
+      # Recursive by default — covers root.hcl and every env's terragrunt.hcl, not just this one.
       - name: terragrunt hcl fmt --check
         working-directory: infra
         run: terragrunt hcl fmt --check
 
-      # Needs infra/src/.tflint.hcl enabling the AWS ruleset plugin — without it tflint only runs generic rules, not the AWS-specific ones reusable modules actually need checked.
+      # infra/src/.tflint.hcl enables the AWS ruleset plugin this needs.
       - uses: terraform-linters/setup-tflint@v4
         with:
           tflint_version: v0.64.0
 
+      # use GITHUB_TOKEN for authenticated requests
       - name: tflint
         working-directory: infra/src
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tflint --init
           tflint --recursive
@@ -129,7 +130,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # root.hcl's before_hook runs scripts/publish-lambda-functions.sh on every plan/apply — needs the SDK installed first. Not needed by init/validate, which never evaluate archive_file's data source. DOTNET_VERSION is defined once, workflow-level — assumes every function shares one SDK version; revisit if that stops being true.
+      # root.hcl's before_hook runs dotnet publish before plan/apply — needs the SDK first. Not needed by init/validate.
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
@@ -139,13 +140,13 @@ jobs:
           role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
           region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
-      # -out uses an absolute /tmp path, not a relative one — terragrunt actually runs terraform from a hashed .terragrunt-cache/... subdirectory, not from this working-directory, so a relative -out path would land somewhere inside that cache maze instead of somewhere upload-artifact can find it.
+      # Absolute /tmp path — terragrunt runs terraform from a hashed cache dir, not this working-directory.
       - name: terragrunt plan
         id: plan
         run: terragrunt plan -no-color -out=/tmp/tfplan.binary 2>&1 | tee /tmp/plan-output.txt
         continue-on-error: true
 
-      # Only a real plan file if the plan step actually succeeded — nothing to hand off otherwise. Both jobs are fresh runners, so this is how the plan crosses from one to the other, not a shared filesystem.
+      # Only uploaded on success — this is how the plan file crosses to apply-terragrunt's separate runner.
       - name: Upload plan file
         if: steps.plan.outcome == 'success'
         uses: actions/upload-artifact@v4
@@ -154,7 +155,7 @@ jobs:
           path: /tmp/tfplan.binary
           retention-days: 1
 
-      # terraform apply -no-color <planfile> doesn't re-invoke archive_file's Read (its inputs were already fully known at plan time), so it never re-zips — it just expects the zip this plan already built to still be on disk. Since apply-terragrunt is a separate runner, that exact zip has to cross over the same way the plan file does. Tarred into one file rather than uploaded as a directory — upload-artifact's directory-structure preservation depends on how many files a path/glob matches (confirmed via a real failure: with only one lambda function today, it silently dropped the Thor.Authorizer/ prefix), whereas tar's own path handling is simple and fully deterministic regardless of file count.
+      # apply doesn't rebuild the zip, so it must cross to apply-terragrunt too — tarred as one file for a reliable transfer.
       - name: Tar lambda function build zips
         if: steps.plan.outcome == 'success'
         working-directory: ${{ github.workspace }}
@@ -174,7 +175,7 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-      # Every listened-for pull_request type here is a live, open PR (closed isn't in the list) — on a push-triggered run this is simply skipped, no PR to comment on.
+      # Skipped on push runs — no PR to comment on.
       - name: Post plan to PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -200,35 +201,32 @@ jobs:
 
   apply-terragrunt:
     needs: [context, plan-terragrunt]
-    # Explicit always() + a manual plan-terragrunt.result check, rather than relying on the implicit success-of-all-needs default, so this condition is the single source of truth for whether apply runs.
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    # dev/qa/prod Environments all exist and are shared with the backend deploy pipeline — only qa/prod have a required-reviewer rule configured, so dev still applies automatically despite running under a real Environment now.
+    # Shared dev/qa/prod Environments with backend deploy — only qa/prod require review.
     environment: ${{ needs.context.outputs.environment }}
     defaults:
       run:
         working-directory: infra/envs/${{ needs.context.outputs.environment }}
+    env:
+      # Skips root.hcl's before_hook rebuild — this job applies a saved plan and already restores the exact zip plan-terragrunt built, so no SDK/rebuild needed here at all.
+      SKIP_LAMBDA_PUBLISH: "true"
     steps:
       - uses: actions/checkout@v4
-
-      # root.hcl's before_hook runs scripts/publish-lambda-functions.sh on every plan/apply — needs the SDK installed first. Rebuilds independently from plan-terragrunt's own build — accepted risk that a non-identical rebuild here could make the saved plan look stale. DOTNET_VERSION is defined once, workflow-level — assumes every function shares one SDK version; revisit if that stops being true.
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - uses: ./.github/actions/terragrunt-setup
         with:
           role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
           region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
-      # Downloads to /tmp, matching where plan-terragrunt wrote it — same reasoning as the plan step's -out path, an absolute path sidesteps terragrunt's .terragrunt-cache/... execution directory entirely.
+      # /tmp, matching where plan-terragrunt wrote it.
       - name: Download plan file
         uses: actions/download-artifact@v4
         with:
           name: tfplan-${{ needs.context.outputs.environment }}
           path: /tmp
 
-      # Restores the exact zip(s) plan-terragrunt's archive_file already built — apply never re-invokes archive_file's Read, it just expects the file to be there. continue-on-error, not conditional: no artifact exists at all when enable_authorizer was off for this environment's plan, which is fine — nothing in this apply would reference it either.
+      # continue-on-error: no artifact exists when enable_authorizer was off for this plan, which is fine.
       - name: Download lambda function build zips
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -236,7 +234,7 @@ jobs:
           name: lambda-zips-${{ needs.context.outputs.environment }}
           path: /tmp
 
-      # Extracts back to the exact same relative layout the tar step recorded (backend/functions/<Name>/...), landing each zip at exactly the absolute path its archive_file's output_path expects. Skips cleanly if the download above found nothing.
+      # Restores the same layout the tar step recorded; skips cleanly if nothing was downloaded.
       - name: Untar lambda function build zips
         working-directory: ${{ github.workspace }}
         run: |
@@ -246,16 +244,15 @@ jobs:
             echo "No lambda-zips artifact downloaded — nothing to extract."
           fi
 
-      # Applies the exact plan file plan-terragrunt produced — no -auto-approve needed, applying a saved plan is already non-interactive. If the underlying state changed since that plan was made, this fails with a stale-plan error instead of silently applying something different than what was reviewed.
+      # Applies the exact plan reviewed — fails as stale if state changed since, instead of applying something different.
       - name: terragrunt apply
         run: terragrunt apply -no-color /tmp/tfplan.binary
 
   seed-ecr-placeholder:
     needs: [context, apply-terragrunt]
-    # Same source-of-truth pattern as apply-terragrunt's own condition — on a PR run apply-terragrunt is skipped, not successful, so this naturally no-ops there too without needing its own event_name check.
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    # Same environment apply-terragrunt just used — GitHub only prompts a required reviewer once per (run, environment), not once per job, so this doesn't add a second approval click.
+    # Same environment apply-terragrunt used — no second reviewer prompt.
     environment: ${{ needs.context.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
@@ -266,8 +263,7 @@ jobs:
           role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
           region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
-      # --platform linux/amd64: same reasoning as placeholder-image/push.sh — Fargate task definitions default to X86_64, so this stays explicit even though ubuntu-latest runners are already x86_64 today.
-      # Only pushes to a repo that currently has zero images — never overwrites a real, already-deployed :latest just because an unrelated infra change got applied.
+      # linux/amd64: Fargate task defs default to X86_64. Only pushes to repos with zero images — never overwrites a real :latest.
       - name: Seed any empty ECR repo with the placeholder image
         env:
           AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}

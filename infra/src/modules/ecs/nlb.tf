@@ -2,7 +2,7 @@ locals {
   public_services = { for k, v in local.active_services : k => v if v.expose_publicly }
 }
 
-# Blue/primary target group. Green (below) and the production listener exist unconditionally for every publicly-exposed service regardless of its current deployment_strategy — toggling ROLLING <-> BLUE_GREEN is a per-deploy choice, not something that should tear down load balancer infrastructure.
+# Blue/primary target group. Green and the listener always exist too — toggling ROLLING/BLUE_GREEN shouldn't tear down the LB.
 resource "aws_lb_target_group" "thor-nlb-tg-blue" {
   for_each = local.public_services
 
@@ -43,7 +43,7 @@ resource "aws_lb_target_group" "thor-nlb-tg-green" {
   tags = var.tags
 }
 
-# Internal — reached via VPC Link from API Gateway (see the architecture doc), not directly from the internet.
+# Internal — reached via VPC Link from API Gateway, not directly from the internet.
 resource "aws_lb" "thor-nlb" {
   for_each = local.public_services
 
@@ -57,7 +57,7 @@ resource "aws_lb" "thor-nlb" {
   })
 }
 
-# ECS modifies this listener's default_action directly during a blue/green deployment, so its own state must not fight that.
+# ECS modifies default_action during blue/green deploys — ignore it here to avoid fighting that.
 resource "aws_lb_listener" "thor-nlb-listener" {
   for_each = local.public_services
 
@@ -77,7 +77,7 @@ resource "aws_lb_listener" "thor-nlb-listener" {
   tags = var.tags
 }
 
-# Trusted by ecs.amazonaws.com (the ECS control plane modifying the listener), not ecs-tasks.amazonaws.com like the execution/task roles in iam.tf.
+# Trusted by ecs.amazonaws.com (control plane), not ecs-tasks.amazonaws.com like iam.tf's roles.
 data "aws_iam_policy_document" "ecs_service_assume" {
   statement {
     actions = ["sts:AssumeRole"]

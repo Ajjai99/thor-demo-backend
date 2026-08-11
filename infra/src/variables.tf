@@ -175,9 +175,7 @@ variable "authorizer_source_dir" {
 }
 
 # --- database (Aurora PostgreSQL, module.aurora — task-api's database) ---
-# One cluster per environment, not a map like `services` — RDS Proxy and
-# per-tenant credentials are deliberately out of scope for now, see this
-# repo's Aurora module memory for why.
+# One cluster per environment, not a map like `services` — RDS Proxy and per-tenant credentials are out of scope for now.
 
 variable "aurora_database_name" {
   type        = string
@@ -227,5 +225,4 @@ variable "aurora_skip_final_snapshot" {
   description = "Should be false for prod, true for throwaway dev/qa environments"
 }
 
-# storage / event-driven variables get added here as those modules are
-# wired in below, alongside their own module blocks in main.tf.
+# Future modules' variables go here.

@@ -74,7 +74,7 @@ resource "aws_cloudfront_distribution" "thor-fe-cdn" {
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
   }
 
-  # SPA client-side routing — any path that isn't a real object in the bucket (a React Router route, for example) falls back to index.html instead of surfacing S3's 403/404 to the browser.
+  # SPA routing — unmatched paths fall back to index.html instead of S3's raw 403/404.
   custom_error_response {
     error_code         = 403
     response_code      = 200

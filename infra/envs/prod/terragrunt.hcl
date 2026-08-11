@@ -6,7 +6,7 @@ terraform {
   source = "../../src"
 }
 
-# Every value the root module accepts is spelled out below instead of relying on a default in infra/src/variables.tf — same convention as envs/dev/terragrunt.hcl; only `environment` is left out, since infra/root.hcl already supplies it for every environment.
+# Every value the root module accepts is spelled out below, same as envs/dev — only `environment` is left out, root.hcl supplies it.
 inputs = {
   # --- network ---
   enable_network       = true
@@ -95,7 +95,7 @@ inputs = {
   authorizer_lambda_runtime     = "dotnet10"
   authorizer_lambda_timeout     = 60  # seconds
   authorizer_lambda_memory_size = 512 # MB
-  # Absolute path — get_repo_root() resolves to the real repo root via git, not Terragrunt's ephemeral cache copy, so this stays valid no matter which cache copy Terraform runs from. dotnet publish must have already written here before terragrunt runs.
+  # get_repo_root() stays valid across any Terragrunt cache copy. dotnet publish must have already written here.
   authorizer_source_dir = "${get_repo_root()}/backend/functions/Thor.Authorizer/publish"
 
   tags = {}
