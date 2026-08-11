@@ -46,8 +46,10 @@ resource "aws_iam_role_policy_attachment" "thor-lambda-authorizer-policy-attachm
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Scoped to this environment's Aurora cluster/secret — ExecuteStatement looks up the key, GetSecretValue authenticates Data API.
-data "aws_iam_policy_document" "aurora-data-api-policy-document" {
+# One policy for everything beyond basic execution — add new statements here as the function needs more permissions,
+# rather than a new aws_iam_role_policy per permission. ExecuteStatement/GetSecretValue for Aurora Data API,
+# GetSecretValue for the PBKDF2 salt (SecretsManagerSaltProvider fetches it by ARN at cold start).
+data "aws_iam_policy_document" "thor-lambda-authorizer-permissions" {
   statement {
     actions   = ["rds-data:ExecuteStatement"]
     resources = [var.aurora_cluster_arn]
@@ -55,14 +57,14 @@ data "aws_iam_policy_document" "aurora-data-api-policy-document" {
 
   statement {
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.aurora_secret_arn]
+    resources = [var.aurora_secret_arn, var.authorizer_salt_secret_arn]
   }
 }
 
-resource "aws_iam_role_policy" "aurora_data_api" {
-  name   = "aurora-data-api-access"
+resource "aws_iam_role_policy" "thor_lambda_authorizer_permissions" {
+  name   = "thor-lambda-authorizer-permissions"
   role   = aws_iam_role.thor-lambda-authorizer-role.id
-  policy = data.aws_iam_policy_document.aurora-data-api-policy-document.json
+  policy = data.aws_iam_policy_document.thor-lambda-authorizer-permissions.json
 }
 
 resource "aws_cloudwatch_log_group" "thor-lambda-authorizer-logs" {
@@ -74,7 +76,7 @@ resource "aws_cloudwatch_log_group" "thor-lambda-authorizer-logs" {
 resource "aws_lambda_function" "thor-authorizer-lambda" {
   function_name = local.name_prefix
   role          = aws_iam_role.thor-lambda-authorizer-role.arn
-  runtime = var.runtime
+  runtime       = var.runtime
   # Matches Thor.Authorizer's assembly/namespace/class (backend/functions/Thor.Authorizer/src).
   handler     = "Thor.Authorizer::Thor.Authorizer.Function::FunctionHandler"
   timeout     = var.timeout
@@ -85,13 +87,14 @@ resource "aws_lambda_function" "thor-authorizer-lambda" {
 
   environment {
     variables = {
-      AURORA_CLUSTER_ARN   = var.aurora_cluster_arn
-      AURORA_SECRET_ARN    = var.aurora_secret_arn
-      AURORA_DATABASE_NAME = var.aurora_database_name
+      AURORA_CLUSTER_ARN             = var.aurora_cluster_arn
+      AURORA_SECRET_ARN              = var.aurora_secret_arn
+      AURORA_DATABASE_NAME           = var.aurora_database_name
+      THOR_AUTHORIZER_SALT_SECRET_ID = var.authorizer_salt_secret_arn
     }
   }
 
-  depends_on = [aws_cloudwatch_log_group.thor-lambda-authorizer-logs, aws_iam_role_policy_attachment.thor-lambda-authorizer-policy-attachment, aws_iam_role_policy.aurora_data_api]
+  depends_on = [aws_cloudwatch_log_group.thor-lambda-authorizer-logs, aws_iam_role_policy_attachment.thor-lambda-authorizer-policy-attachment, aws_iam_role_policy.thor_lambda_authorizer_permissions]
 
   # Custodian auto-tags this after creation and an SCP blocks removing it (see ecs/main.tf) — ignore tags to avoid fighting it.
   lifecycle {
