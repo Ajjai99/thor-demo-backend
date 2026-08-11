@@ -21,8 +21,11 @@ on:
     paths: ["infra/**"]
 
 # .NET SDK version for root.hcl's before_hook (dotnet publish) — one place, same reasoning as terragrunt-setup's terraform_version/terragrunt_version defaults.
+#
+# TF_TOKEN_<hostname, dots as underscores> is how Terraform's remote backend (root.hcl's state backend, trialc6mgth.jfrog.io) authenticates non-interactively — this is what `terraform login`'s browser OAuth flow does locally, but CI can't run a browser, so this env var is the documented CI-equivalent. Needed by every job that runs any terragrunt command against a real backend (init/validate/plan/apply all trigger an implicit backend init) — set once here rather than per-job.
 env:
   DOTNET_VERSION: "10.0.100"
+  TF_TOKEN_trialc6mgth_jfrog_io: ${{ secrets.JFROG_ACCESS_TOKEN }}
 
 # Runs for the same branch happen one at a time, not in parallel, so two close-together pushes don't race each other. Never cancels a run partway through - stopping mid-apply could leave infrastructure half-changed.
 concurrency:
