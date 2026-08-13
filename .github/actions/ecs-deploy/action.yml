@@ -19,9 +19,7 @@ outputs:
 runs:
   using: composite
   steps:
-    # Terraform owns the task definition's shape (cpu/memory/roles/etc, see
-    # services.tf's lifecycle.ignore_changes) — this only patches the image
-    # and registers a new revision, never touches anything else.
+    # Only patches the image and registers a new revision — Terraform owns everything else about the task def's shape.
     - id: task-def
       shell: bash
       run: |
@@ -32,22 +30,8 @@ runs:
         NEW_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
         echo "arn=$NEW_ARN" >> "$GITHUB_OUTPUT"
 
-    # aws ecs wait services-stable has a fixed ~10 minute timeout with no
-    # flag to extend it, and whether its rolloutState field is even
-    # populated for BLUE_GREEN deployments is ambiguous in AWS's own docs
-    # (the Deployment API reference scopes rolloutState to "the rolling
-    # update (ECS) deployment type"). A BLUE_GREEN deploy can legitimately
-    # stay in progress for its whole bake_time_in_minutes (configurable up
-    # to 24h in Terraform), so the built-in waiter can report a false
-    # failure on a deployment that's healthy and just still baking.
-    #
-    # Polled manually instead, against a signal that works identically for
-    # both strategies: once describe-services reports exactly one
-    # deployment left, it's PRIMARY, and its taskDefinition matches what
-    # was just registered, the rollout is done — for BLUE_GREEN this point
-    # is reached only after bake time and old-task-set cleanup finish. If
-    # the sole remaining deployment's taskDefinition is the OLD one
-    # instead, ECS rolled the deploy back rather than completing it.
+    # Polled manually instead of `aws ecs wait services-stable` — its fixed ~10min timeout can't cover a BLUE_GREEN
+    # deploy's full bake time (up to 24h), and rolloutState's BLUE_GREEN support is ambiguous in AWS's own docs.
     - shell: bash
       run: |
         aws ecs update-service \

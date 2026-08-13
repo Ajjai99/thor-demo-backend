@@ -34,20 +34,20 @@ variable "services" {
   description = "Per-service configuration, keyed by service name (thor, task-api, intelligence-engine). expose_publicly=true gets a private NLB (nlb.tf, thor only) reached via VPC Link from API Gateway, not directly from the internet; services with expose_publicly=false accept traffic only from the public services' security groups, reachable internally via Service Connect using the map key as the client_alias dns_name. deployment_strategy=BLUE_GREEN is a per-deploy toggle (deployment_strategy_plan.md reserves it for DB-schema-change deploys) — for a publicly-exposed service it shifts the NLB's production listener between blue/green target groups; for an internal service it's a plain task-set swap."
   type = map(object({
     container_image       = string
-    container_port        = optional(number, 8080)
-    cpu                   = optional(number, 512)
-    memory                = optional(number, 1024)
-    desired_count         = optional(number, 2)
-    min_healthy_percent   = optional(number, 100)
-    max_percent           = optional(number, 200)
-    health_check_path     = optional(string, "/health")
-    log_retention_days    = optional(number, 30)
-    environment_variables = optional(map(string), {})
-    secrets               = optional(map(string), {})
-    expose_publicly       = optional(bool, false)
-    nlb_listener_port     = optional(number, 80)
-    deployment_strategy   = optional(string, "ROLLING")
-    bake_time_in_minutes  = optional(number, 5)
+    container_port        = number
+    cpu                   = number
+    memory                = number
+    desired_count         = number
+    min_healthy_percent   = number
+    max_percent           = number
+    health_check_path     = string
+    log_retention_days    = number
+    environment_variables = map(string)
+    secrets               = map(string)
+    expose_publicly       = bool
+    nlb_listener_port     = optional(number)
+    deployment_strategy   = string
+    bake_time_in_minutes  = number
   }))
 
   validation {
@@ -59,6 +59,22 @@ variable "services" {
     condition     = alltrue([for k, v in var.services : v.bake_time_in_minutes >= 0 && v.bake_time_in_minutes <= 1440])
     error_message = "bake_time_in_minutes must be between 0 and 1440 (24 hours) for every service."
   }
+}
+
+variable "cross_account_pull_principal_arns" {
+  type        = list(string)
+  description = "IAM role ARNs (e.g. a downstream environment's deploy role, possibly in another AWS account) allowed to pull images from this environment's ECR repos. Empty by default — fill in once the downstream role actually exists (e.g. qa's terragrunt.hcl sets this to prod's deploy role ARN once the prod account/role are real)."
+  default     = []
+}
+
+variable "aurora_cluster_arn" {
+  type        = string
+  description = "Aurora cluster ARN — RDS Data API's resourceArn parameter for thor/task-api's task role"
+}
+
+variable "aurora_secret_arn" {
+  type        = string
+  description = "Aurora master user secret ARN — RDS Data API's secretArn parameter for thor/task-api's task role"
 }
 
 variable "tags" {

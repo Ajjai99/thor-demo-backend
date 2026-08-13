@@ -28,6 +28,24 @@ locals {
 
   # The one service with expose_publicly = true.
   public_service_name = [for k, v in var.services : k if v.expose_publicly][0]
+
+  # Proxy endpoint when enabled, Aurora's own endpoint otherwise.
+  db_host = var.enable_rds_proxy ? module.rds_proxy[0].endpoint : module.aurora.endpoint
+
+  # Shared Aurora connection info, merged into thor/task-api only (service-specific values stay in terragrunt.hcl).
+  services_with_shared_secrets = {
+    for k, v in var.services : k => contains(["thor", "task-api"], k) ? merge(v, {
+      secrets = merge(v.secrets, {
+        DB_USERNAME = "${module.aurora.master_user_secret_arn}:username::"
+        DB_PASSWORD = "${module.aurora.master_user_secret_arn}:password::"
+      })
+      environment_variables = merge(v.environment_variables, {
+        DB_HOST = local.db_host
+        DB_NAME = module.aurora.database_name
+        DB_PORT = "5432"
+      })
+    }) : v
+  }
 }
 
 # Always on — enable_compute gates resources inside the module instead.
@@ -41,7 +59,10 @@ module "ecs" {
   private_subnet_ids        = local.private_subnet_ids
   enable_container_insights = var.enable_container_insights
 
-  services = var.services
+  services = local.services_with_shared_secrets
+
+  aurora_cluster_arn = module.aurora.cluster_arn
+  aurora_secret_arn  = module.aurora.master_user_secret_arn
 
   tags = var.tags
 }
@@ -112,12 +133,14 @@ module "lambda" {
 module "aurora" {
   source = "./modules/aurora"
 
-  environment                = var.environment
-  vpc_id                     = local.vpc_id
-  vpc_cidr                   = local.vpc_cidr_effective
-  private_subnet_ids         = local.private_subnet_ids
-  create_task_api_ingress    = var.enable_compute
-  task_api_security_group_id = var.enable_compute ? module.ecs.service_security_group_ids["task-api"] : null
+  environment        = var.environment
+  vpc_id             = local.vpc_id
+  vpc_cidr           = local.vpc_cidr_effective
+  private_subnet_ids = local.private_subnet_ids
+  # Only the proxy reaches Aurora directly — thor/task-api go through it, not around it.
+  allowed_security_group_ids = var.enable_rds_proxy ? {
+    rds-proxy = module.rds_proxy[0].rds_proxy_security_group_id
+  } : {}
 
   database_name         = var.aurora_database_name
   master_username       = var.aurora_master_username
@@ -127,6 +150,28 @@ module "aurora" {
   backup_retention_days = var.aurora_backup_retention_days
   deletion_protection   = var.aurora_deletion_protection
   skip_final_snapshot   = var.aurora_skip_final_snapshot
+
+  tags = var.tags
+}
+
+# Connection pooling in front of Aurora — thor/task-api connect here instead of Aurora's own endpoint.
+module "rds_proxy" {
+  count = var.enable_rds_proxy ? 1 : 0
+
+  source = "./modules/rds_proxy"
+
+  environment        = var.environment
+  vpc_id             = local.vpc_id
+  vpc_cidr           = local.vpc_cidr_effective
+  private_subnet_ids = local.private_subnet_ids
+
+  aurora_cluster_identifier = module.aurora.cluster_identifier
+  aurora_secret_arn         = module.aurora.master_user_secret_arn
+
+  allowed_security_group_ids = var.enable_compute ? {
+    thor     = module.ecs.service_security_group_ids["thor"]
+    task-api = module.ecs.service_security_group_ids["task-api"]
+  } : {}
 
   tags = var.tags
 }

@@ -78,28 +78,22 @@ variable "enable_compute" {
 variable "services" {
   description = "Per-service configuration for the shared ECS cluster, keyed by service name. Must define thor, task-api, and intelligence-engine, with thor the only one setting expose_publicly = true (a private NLB reached via VPC Link from API Gateway, not the internet directly — no ALB). deployment_strategy=BLUE_GREEN is a per-deploy toggle (reserved for DB-schema-change deploys per deployment_strategy_plan.md), not a fixed per-service default."
   type = map(object({
-    container_image       = optional(string, "")
-    container_port        = optional(number, 8080)
-    cpu                   = optional(number, 512)
-    memory                = optional(number, 1024)
-    desired_count         = optional(number, 2)
-    min_healthy_percent   = optional(number, 100)
-    max_percent           = optional(number, 200)
-    health_check_path     = optional(string, "/health")
-    log_retention_days    = optional(number, 30)
-    environment_variables = optional(map(string), {})
-    secrets               = optional(map(string), {})
-    expose_publicly       = optional(bool, false)
-    nlb_listener_port     = optional(number, 80)
-    deployment_strategy   = optional(string, "ROLLING")
-    bake_time_in_minutes  = optional(number, 5)
+    container_image       = string
+    container_port        = number
+    cpu                   = number
+    memory                = number
+    desired_count         = number
+    min_healthy_percent   = number
+    max_percent           = number
+    health_check_path     = string
+    log_retention_days    = number
+    environment_variables = map(string)
+    secrets               = map(string)
+    expose_publicly       = bool
+    nlb_listener_port     = optional(number)
+    deployment_strategy   = string
+    bake_time_in_minutes  = number
   }))
-
-  default = {
-    thor                = { container_image = "", expose_publicly = true }
-    task-api            = { container_image = "" }
-    intelligence-engine = { container_image = "" }
-  }
 
   validation {
     condition     = alltrue([for k in ["thor", "task-api", "intelligence-engine"] : contains(keys(var.services), k)])
@@ -223,6 +217,14 @@ variable "aurora_skip_final_snapshot" {
   type        = bool
   default     = true
   description = "Should be false for prod, true for throwaway dev/qa environments"
+}
+
+# --- rds proxy (module.rds_proxy, connection pooling in front of Aurora) ---
+
+variable "enable_rds_proxy" {
+  type        = bool
+  description = "Whether to create the RDS Proxy in front of Aurora"
+  default     = false
 }
 
 # Future modules' variables go here.

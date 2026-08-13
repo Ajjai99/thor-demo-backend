@@ -48,3 +48,24 @@ resource "aws_ecr_lifecycle_policy" "thor-ecr-lifecycle" {
     ]
   })
 }
+
+# Lets a downstream environment's deploy role pull-and-retag from this environment's repos during promotion (e.g. qa's deploy role reading dev's repos). Same-account promotion doesn't need this (an IAM policy on the puller's role is enough) — this is only for a cross-account puller (qa -> prod, once the prod account/role are real), which needs the resource owner's side to grant it too.
+resource "aws_ecr_repository_policy" "cross_account_pull" {
+  for_each = length(var.cross_account_pull_principal_arns) > 0 ? var.services : {}
+
+  repository = aws_ecr_repository.thor-ecr-repo[each.key].name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "CrossAccountPull"
+      Effect    = "Allow"
+      Principal = { AWS = var.cross_account_pull_principal_arns }
+      Action = [
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:BatchCheckLayerAvailability",
+      ]
+    }]
+  })
+}

@@ -91,6 +91,9 @@ inputs = {
   enable_frontend      = true
   frontend_price_class = "PriceClass_100"
 
+  # --- rds proxy ---
+  enable_rds_proxy = true
+
   # --- api gateway authorizer ---
   enable_authorizer = true
 

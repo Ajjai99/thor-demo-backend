@@ -18,9 +18,9 @@ locals {
 
   account = local.account_map[local.environment]
 
-  # JFrog Cloud state backend
-  jfrog_hostname = "trialc6mgth.jfrog.io"
-  repo_name      = "terraform-state-local"
+  # JFrog Cloud state backend. Changing jfrog_hostname also means updating infra.yml's TF_TOKEN_... line to match.
+  jfrog_hostname = get_env("JFROG_HOSTNAME", "trialc6mgth.jfrog.io")
+  repo_name      = get_env("TF_BACKEND_REPOSITORY", "terraform-state-local")
 }
 
 # Backend config via generate

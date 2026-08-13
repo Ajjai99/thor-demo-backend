@@ -88,6 +88,9 @@ inputs = {
   aurora_deletion_protection   = true
   aurora_skip_final_snapshot   = false
 
+  # --- rds proxy ---
+  enable_rds_proxy = true
+
   # --- api gateway authorizer ---
   enable_authorizer = true
 

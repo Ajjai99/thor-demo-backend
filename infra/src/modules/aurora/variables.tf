@@ -18,16 +18,10 @@ variable "private_subnet_ids" {
   description = "Private subnets for the DB subnet group (needs at least 2, in different AZs)"
 }
 
-variable "task_api_security_group_id" {
-  type        = string
-  default     = null
-  description = "task-api's ECS service security group ID — null until enable_compute is true (task-api's SG doesn't exist yet). Only referenced inside the ingress rule's body, never used to decide whether that rule exists (see create_task_api_ingress) — this value can be \"known after apply\" without breaking anything, since count/for_each are the only place Terraform requires a plan-time-known value."
-}
-
-variable "create_task_api_ingress" {
-  type        = bool
-  default     = false
-  description = "Whether to create the ingress rule granting task-api access to the database — pass var.enable_compute here, not a `!= null` check on task_api_security_group_id. A count/for_each meta-argument must be fully known at plan time; task_api_security_group_id's *value* comes from a security group Terraform may still be creating/replacing in this same apply, so gating count on a null-check of it fails with \"Invalid count argument\" the moment that security group actually changes. enable_compute itself is a plain, statically-known bool, so gating on that instead sidesteps the problem entirely — the possibly-still-unknown ID only gets consumed inside the resource body below, which is fine."
+variable "allowed_security_group_ids" {
+  type        = map(string)
+  default     = {}
+  description = "Security group IDs allowed to reach Aurora on 5432, one ingress rule per entry — keyed by a static consumer name (e.g. \"thor\", \"task-api\"), not the ID itself. for_each needs its keys known at plan time even when the ID values aren't (e.g. a security group Terraform is still creating in this same apply) — a map with static keys and possibly-unknown values satisfies that; a set built from the ID values themselves does not, since the IDs would be both the keys and the values."
 }
 
 variable "database_name" {
