@@ -106,6 +106,8 @@ data "aws_iam_policy_document" "blue_green_permissions" {
       "elasticloadbalancing:DescribeListeners",
       "elasticloadbalancing:DescribeTargetHealth",
       "elasticloadbalancing:ModifyListener",
+      "elasticloadbalancing:RegisterTargets",
+      "elasticloadbalancing:DeregisterTargets",
     ]
     resources = ["*"]
   }

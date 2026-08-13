@@ -108,3 +108,16 @@ resource "aws_rds_cluster_instance" "aurora_instance" {
     Name = "${local.name_prefix}-instance"
   })
 }
+
+# Second instance for Multi-AZ failover — kept as its own resource, not for_each, so it's purely additive.
+resource "aws_rds_cluster_instance" "aurora_instance_2" {
+  identifier         = "${local.name_prefix}-instance-2"
+  cluster_identifier = aws_rds_cluster.aurora_cluster.id
+  instance_class     = "db.serverless"
+  engine             = aws_rds_cluster.aurora_cluster.engine
+  engine_version     = aws_rds_cluster.aurora_cluster.engine_version
+
+  tags = merge(var.tags, {
+    Name = "${local.name_prefix}-instance-2"
+  })
+}
