@@ -91,6 +91,16 @@ inputs = {
   enable_frontend      = true
   frontend_price_class = "PriceClass_100"
 
+  # --- database (Aurora PostgreSQL, task-api's) ---
+  aurora_database_name         = "thor_qa_db"
+  aurora_master_username       = "thor_admin"
+  aurora_engine_version        = "16.13"
+  aurora_min_capacity          = 0.5
+  aurora_max_capacity          = 1
+  aurora_backup_retention_days = 7
+  aurora_deletion_protection   = true
+  aurora_skip_final_snapshot   = true
+
   # --- rds proxy ---
   enable_rds_proxy = true
 

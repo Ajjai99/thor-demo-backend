@@ -38,7 +38,7 @@ inputs = {
       expose_publicly       = true
       nlb_listener_port     = 80
       deployment_strategy   = "BLUE_GREEN"
-      bake_time_in_minutes  = 5
+      bake_time_in_minutes  = 10
     }
     task-api = {
       container_image       = ""
@@ -54,7 +54,7 @@ inputs = {
       secrets               = {}
       expose_publicly       = false
       deployment_strategy   = "BLUE_GREEN"
-      bake_time_in_minutes  = 5
+      bake_time_in_minutes  = 10
     }
     intelligence-engine = {
       container_image       = ""
@@ -70,7 +70,7 @@ inputs = {
       secrets               = {}
       expose_publicly       = false
       deployment_strategy   = "BLUE_GREEN"
-      bake_time_in_minutes  = 5
+      bake_time_in_minutes  = 10
     }
   }
 
@@ -86,7 +86,7 @@ inputs = {
   aurora_min_capacity          = 0.5
   aurora_max_capacity          = 1
   aurora_backup_retention_days = 7
-  aurora_deletion_protection   = false
+  aurora_deletion_protection   = true
   aurora_skip_final_snapshot   = true
 
   # --- rds proxy ---
