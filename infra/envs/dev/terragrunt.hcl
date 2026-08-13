@@ -86,7 +86,7 @@ inputs = {
   aurora_min_capacity          = 0.5
   aurora_max_capacity          = 1
   aurora_backup_retention_days = 7
-  aurora_deletion_protection   = false
+  aurora_deletion_protection   = true
   aurora_skip_final_snapshot   = true
 
   # --- rds proxy ---
