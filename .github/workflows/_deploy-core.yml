@@ -114,8 +114,9 @@ jobs:
             echo "No tests found, skipping."
           fi
 
+      # --no-cache: guarantees pip install re-resolves requirements.txt fresh every build, no stale layer reuse possible.
       - name: Build image
-        run: docker build -t "${{ steps.image.outputs.jfrog_uri }}" .
+        run: docker build --no-cache -t "${{ steps.image.outputs.jfrog_uri }}" .
 
       # Real gate — CRITICAL/HIGH findings fail this step, so the image never reaches JFrog, ECR, or ECS.
       - name: Scan image for vulnerabilities (Trivy)
