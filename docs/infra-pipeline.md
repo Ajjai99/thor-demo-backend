@@ -54,7 +54,7 @@ The role itself is picked with a chained expression on `context`'s resolved envi
 | # | Job | What it does |
 |---|-----|---------------|
 | 1 | `context` | Figures out the environment — dev, qa, or prod — from the branch name. Errors out on any other branch instead of silently defaulting. |
-| 2 | `init-terragrunt` | Connects to the S3 state backend — creating the bucket automatically if it doesn't exist yet — and downloads providers. Fails fast if credentials or backend access are broken. |
+| 2 | `init-terragrunt` | Connects to the JFrog Artifactory state backend and downloads providers. Fails fast if credentials or backend access are broken. |
 | 3 | `validate-terragrunt` | Checks the Terraform code is syntactically valid, then checks formatting (`hcl fmt`) and AWS best-practice rules (`tflint`) — all in one job. |
 | 4 | `plan-terragrunt` | Previews exactly what would change. On a PR, posts that preview as a comment for review. |
 | 5 | `apply-terragrunt` — *push only* | Actually makes the change. Automatic for dev; waits for a required reviewer on qa/prod. |

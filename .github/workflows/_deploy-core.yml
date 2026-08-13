@@ -66,7 +66,7 @@ jobs:
       - uses: ./.github/actions/ecr-login
         id: ecr
         with:
-          role_arn: ${{ vars.AWS_ROLE_ARN }}
+          role_arn: ${{ inputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || inputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || inputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
           region: ${{ env.AWS_REGION }}
 
       - uses: ./.github/actions/jfrog-login
@@ -79,7 +79,7 @@ jobs:
       - name: Set image URIs
         id: image
         run: |
-          echo "jfrog_uri=${{ steps.jfrog.outputs.registry }}/${{ vars.JFROG_DOCKER_REPO }}/${{ inputs.service }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "jfrog_uri=${{ steps.jfrog.outputs.registry }}/${{ vars.DOCKER_REPOSITORY }}/${{ inputs.service }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
           echo "ecr_uri=${{ steps.ecr.outputs.registry }}/${{ inputs.service }}-dev:${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore & build (.NET)
@@ -173,7 +173,7 @@ jobs:
       - uses: ./.github/actions/ecr-login
         id: ecr
         with:
-          role_arn: ${{ vars.AWS_ROLE_ARN }}
+          role_arn: ${{ inputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || inputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || inputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
           region: ${{ env.AWS_REGION }}
 
       - uses: ./.github/actions/jfrog-login
@@ -251,10 +251,12 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
 
     steps:
+      - uses: actions/checkout@v4
+
       - uses: ./.github/actions/ecr-login
         id: ecr
         with:
-          role_arn: ${{ vars.AWS_ROLE_ARN }}
+          role_arn: ${{ inputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || inputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || inputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
           region: ${{ env.AWS_REGION }}
 
       - name: Promote tested candidate to the verified tag
@@ -287,7 +289,7 @@ jobs:
       - uses: ./.github/actions/ecr-login
         id: ecr
         with:
-          role_arn: ${{ vars.AWS_ROLE_ARN }}
+          role_arn: ${{ inputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || inputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || inputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
           region: ${{ env.AWS_REGION }}
 
       - name: Read manifest / resolve digest to promote

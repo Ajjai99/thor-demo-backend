@@ -14,16 +14,23 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [dev, qa, main]
-    paths: ["infra/**"]
+    paths: ["infra/**", "backend/functions/**"]
   push:
     branches: [dev, qa, main]
-    paths: ["infra/**"]
+    paths: ["infra/**", "backend/functions/**"]
 
 # DOTNET_VERSION: SDK version for root.hcl's before_hook (dotnet publish), one place.
 # TF_TOKEN_...: non-interactive auth for the JFrog remote state backend — CI's equivalent of `terraform login`. Needed by every job running a terragrunt command.
+# TF_BACKEND_REPOSITORY / JFROG_HOSTNAME: read by root.hcl's repo_name / jfrog_hostname via get_env(). Fallback
+# baked in here, not left to get_env()'s own default — an unset vars.* resolves to an empty string, not an
+# absent var, and get_env() returns that empty string literally rather than falling back (confirmed via a real
+# terragrunt render). Changing JFROG_HOSTNAME to a real different value also means updating the TF_TOKEN_...
+# line below to match — that name is mechanically derived from the hostname, not automatic (see setup guide).
 env:
   DOTNET_VERSION: "10.0.100"
   TF_TOKEN_trialc6mgth_jfrog_io: ${{ secrets.JFROG_ACCESS_TOKEN }}
+  JFROG_HOSTNAME: ${{ vars.JFROG_HOSTNAME || 'trialc6mgth.jfrog.io' }}
+  TF_BACKEND_REPOSITORY: ${{ vars.TF_BACKEND_REPOSITORY || 'terraform-state-local' }}
 
 # One run per branch at a time; never cancels mid-run to avoid a half-applied state.
 concurrency:

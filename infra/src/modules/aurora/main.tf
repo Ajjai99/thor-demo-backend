@@ -26,10 +26,17 @@ resource "aws_db_subnet_group" "aurora_subnet_group" {
 }
 
 # No inline ingress — separate rule below, same dependency-cycle reasoning as ecs/security_groups.tf.
+# name_prefix + create_before_destroy: a description change (or anything else forcing replacement) needs the new
+# SG created — and the live Aurora cluster repointed at it — before the old one is destroyed. A fixed name would
+# collide with the still-existing old SG the moment Terraform tries to create the replacement.
 resource "aws_security_group" "aurora_security_group" {
-  name        = "${local.name_prefix}-sg"
-  description = "Aurora PostgreSQL - ingress from task-api only, egress scoped to the VPC"
+  name_prefix = "${local.name_prefix}-sg-"
+  description = "Aurora PostgreSQL - ingress per allowed_security_group_ids, egress scoped to the VPC"
   vpc_id      = var.vpc_id
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   egress {
     description = "Within VPC only"
@@ -44,19 +51,19 @@ resource "aws_security_group" "aurora_security_group" {
   })
 }
 
-# Gated on the plain bool create_task_api_ingress, not a null-check — an unknown mid-apply value would break count.
-resource "aws_vpc_security_group_ingress_rule" "task_api" {
-  count = var.create_task_api_ingress ? 1 : 0
+# One rule per entry in allowed_security_group_ids — map keys (not the IDs) are what for_each uses, see variables.tf.
+resource "aws_vpc_security_group_ingress_rule" "allowed" {
+  for_each = var.allowed_security_group_ids
 
   security_group_id            = aws_security_group.aurora_security_group.id
-  description                  = "PostgreSQL from task-api"
-  referenced_security_group_id = var.task_api_security_group_id
+  description                  = "PostgreSQL from ${each.key}"
+  referenced_security_group_id = each.value
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
 
   tags = merge(var.tags, {
-    Name = "${local.name_prefix}-task-api-ingress"
+    Name = "${local.name_prefix}-${each.key}-ingress"
   })
 }
 

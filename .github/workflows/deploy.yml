@@ -70,14 +70,17 @@ jobs:
           filters: |
             thor-source:
               - 'backend/services/thor/**'
+              - 'backend/shared/**'
             thor-manifest:
               - 'deploy/thor/*.json'
             task-api-source:
               - 'backend/services/task-api/**'
+              - 'backend/shared/**'
             task-api-manifest:
               - 'deploy/task-api/*.json'
             intelligence-engine-source:
               - 'backend/services/intelligence-engine/**'
+              - 'backend/shared/**'
             intelligence-engine-manifest:
               - 'deploy/intelligence-engine/*.json'
 
