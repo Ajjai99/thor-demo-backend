@@ -1,0 +1,7 @@
+{
+  "service": "task-api",
+  "environment": "dev",
+  "digest": "trialc6mgth.jfrog.io/docker-container-image/task-api@sha256:21d5a2c486ff34e7e93e069450fc91223e72b801d9062e1537e3d311b1c6920f",
+  "commitId": "eda15d3c8cfbcaae58538b562fea146c5bb84cb0",
+  "deployedAt": "2026-08-13T10:52:26Z"
+}
