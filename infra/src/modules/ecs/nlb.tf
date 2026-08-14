@@ -85,8 +85,8 @@ resource "aws_lb_listener" "thor-nlb-test-listener" {
   for_each = local.public_services
 
   load_balancer_arn = aws_lb.thor-nlb[each.key].arn
-  port              = each.value.nlb_test_listener_port
-  protocol          = "TCP"
+  port     = coalesce(each.value.nlb_test_listener_port, 8081)
+  protocol = "TCP"
 
   default_action {
     type             = "forward"

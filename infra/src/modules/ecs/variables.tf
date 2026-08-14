@@ -46,7 +46,7 @@ variable "services" {
     secrets                = map(string)
     expose_publicly        = bool
     nlb_listener_port      = optional(number)
-    nlb_test_listener_port = optional(number)
+    nlb_test_listener_port = optional(number, 8081)
     deployment_strategy    = string
     bake_time_in_minutes   = number
   }))
