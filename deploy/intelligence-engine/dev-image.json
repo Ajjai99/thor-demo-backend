@@ -1,7 +1,7 @@
 {
   "service": "intelligence-engine",
   "environment": "dev",
-  "digest": "",
-  "commitId": "",
-  "deployedAt": ""
+  "digest": "trialc6mgth.jfrog.io/docker-container-image/intelligence-engine@sha256:7b24f673e4159e406cc632db67d5f472897b46963352b8bcdf884b0bfe80a001",
+  "commitId": "f8b0d39b1d2a1381f8be74d67c317bd82af69e01",
+  "deployedAt": "2026-08-14T09:47:42Z"
 }
