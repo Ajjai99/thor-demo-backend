@@ -2,21 +2,9 @@ name: Deploy
 
 # Entry point — decides environment/mode/which service(s) changed, then calls _deploy-core.yml. Replaces backend.yml + backend-dispatch.yml.
 #
-# Two real triggers:
-#   push to dev   -> mode: deploy   (dev builds from source)
-#   push to qa/main -> mode: promote (a merged deploy/<service>/<upstream-env>-image.json manifest PR is what got here — _deploy-core.yml reads it)
-#   pull_request  -> preview only, calls backend-preview.yml directly (compile+unit-test, no Docker/AWS/JFrog — no manifest is ever produced or consumed by a preview)
-#   workflow_dispatch -> manual deploy/rollback, any environment, optionally pinned to an exact image_digest
+# push to dev -> deploy (build from source); push to qa/main -> promote (reads the manifest your own dev->qa / qa->main promotion PR carried over); pull_request -> preview only, via deploy-preview.yml; workflow_dispatch -> manual deploy/rollback.
 #
-# Path-aware: dorny/paths-filter decides which service(s) actually changed
-# — source changes only matter on a push to dev, manifest changes only
-# matter on a push to qa/main (a manifest PR merging into qa touches
-# deploy/<service>/dev-image.json; merging into main touches
-# deploy/<service>/qa-image.json — one broad per-service "manifest" filter
-# covers both, since which specific file is relevant is already implied by
-# which branch this push landed on). Manifests live one subfolder per
-# service (deploy/<service>/<env>-image.json), not flattened, so the
-# `deploy/` folder itself doesn't turn into nine similarly-named files.
+# dorny/paths-filter decides which service(s) changed: source filters on push to dev, manifest filters (deploy/<service>/<env>-image.json) on push to qa/main.
 
 on:
   push:
@@ -41,11 +29,10 @@ on:
         required: false
         type: string
 
-# id-token: write must be re-declared at every hop of a reusable-workflow chain or downstream _deploy-core.yml calls get capped to id-token: none. contents: write / pull-requests: write for the same reason — manifest-write needs them, and permissions don't implicitly propagate down through a workflow_call boundary.
+# Permissions don't propagate through a workflow_call boundary — re-declared here for _deploy-core.yml's use.
 permissions:
   id-token: write
   contents: write
-  pull-requests: write
 
 jobs:
   detect-changes:
@@ -59,14 +46,17 @@ jobs:
       intelligence-engine-source: ${{ steps.filter.outputs['intelligence-engine-source'] }}
       intelligence-engine-manifest: ${{ steps.filter.outputs['intelligence-engine-manifest'] }}
     steps:
-      # fetch-depth: 0 — dorny/paths-filter diffs against github.event.before on a push; a shallow clone doesn't have that commit's history and the action fails open (treats every filter as matched) instead of erroring.
+      # dorny/paths-filter needs full history to diff, or it fails open (matches everything).
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # base defaults to main when ref != base, so push to dev/qa would diff against main instead of their own
+      # previous commit — set to the branch itself to fix that; left blank on pull_request, whose default (the PR's base branch) is already correct.
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          base: ${{ github.event_name == 'push' && github.ref_name || '' }}
           filters: |
             thor-source:
               - 'backend/services/thor/**'
@@ -103,21 +93,18 @@ jobs:
             BRANCH="${{ github.base_ref }}"
           fi
 
+          case "$BRANCH" in
+            qa)   ENVIRONMENT="qa";   MODE="promote" ;;
+            main) ENVIRONMENT="prod"; MODE="promote" ;;
+            *)    ENVIRONMENT="dev";  MODE="deploy" ;;
+          esac
+
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "mode=preview" >> "$GITHUB_OUTPUT"
-          elif [ "$BRANCH" = "dev" ]; then
-            echo "mode=deploy" >> "$GITHUB_OUTPUT"
-          else
-            echo "mode=promote" >> "$GITHUB_OUTPUT"
+            MODE="preview"
           fi
 
-          if [ "$BRANCH" = "qa" ]; then
-            echo "environment=qa" >> "$GITHUB_OUTPUT"
-          elif [ "$BRANCH" = "main" ]; then
-            echo "environment=prod" >> "$GITHUB_OUTPUT"
-          else
-            echo "environment=dev" >> "$GITHUB_OUTPUT"
-          fi
+          echo "environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
 
           # Preview only ever needs the source filter — a PR never touches manifest files.
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -167,7 +154,7 @@ jobs:
   preview-thor:
     needs: context
     if: needs.context.outputs.mode == 'preview' && needs.context.outputs.thor == 'true'
-    uses: ./.github/workflows/backend-preview.yml
+    uses: ./.github/workflows/deploy-preview.yml
     with:
       service: thor
     secrets: inherit
@@ -175,7 +162,7 @@ jobs:
   preview-task-api:
     needs: context
     if: needs.context.outputs.mode == 'preview' && needs.context.outputs['task-api'] == 'true'
-    uses: ./.github/workflows/backend-preview.yml
+    uses: ./.github/workflows/deploy-preview.yml
     with:
       service: task-api
     secrets: inherit
@@ -183,7 +170,7 @@ jobs:
   preview-intelligence-engine:
     needs: context
     if: needs.context.outputs.mode == 'preview' && needs.context.outputs['intelligence-engine'] == 'true'
-    uses: ./.github/workflows/backend-preview.yml
+    uses: ./.github/workflows/deploy-preview.yml
     with:
       service: intelligence-engine
     secrets: inherit
