@@ -1,5 +1,5 @@
 name: ECS deploy
-description: Registers a new task definition revision pointing at the given image, deploys it, and waits for the rollout (rolling or native blue/green) to stabilize.
+description: Registers a new task definition revision pointing at the given image, deploys it, and waits for the rollout (rolling or native blue/green) to stabilize. Also redeploys the other two of thor/task-api/intelligence-engine with their current image (no rebuild) at the same time, so all three deployments/bake windows run concurrently instead of one after another.
 
 inputs:
   environment:
@@ -14,92 +14,142 @@ inputs:
 
 outputs:
   task_definition_arn:
-    value: ${{ steps['task-def'].outputs.arn }}
+    value: ${{ steps.deploy.outputs.arn }}
 
 runs:
   using: composite
   steps:
-    # Only patches the image and registers a new revision — Terraform owns everything else about the task def's shape.
-    - id: task-def
+    # deploy_and_wait is launched as a background job (&) for the main service and both siblings, so all three
+    # update-service calls fire within moments of each other and their wait loops (including BLUE_GREEN bake
+    # time) run concurrently — `wait` only blocks the shell, not the three background jobs polling AWS.
+    # Composite `run:` steps use `bash -e`, and an async command (one started with &) is explicitly exempt from
+    # errexit — only the `wait $PID || ...` lines need their own failure handling, which they have.
+    - id: deploy
       shell: bash
       run: |
-        FAMILY="thor-${{ inputs.environment }}-${{ inputs.service }}"
-        CURRENT_TASK_DEF=$(aws ecs describe-task-definition --task-definition "$FAMILY" --query 'taskDefinition' --output json)
-        NEW_TASK_DEF=$(echo "$CURRENT_TASK_DEF" | jq --arg IMAGE "${{ inputs.image_uri }}" \
-          '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
-        NEW_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
-        echo "arn=$NEW_ARN" >> "$GITHUB_OUTPUT"
+        deploy_and_wait() {
+          local SERVICE="$1"
+          local IMAGE_URI="$2"
 
-    # Polled manually instead of `aws ecs wait services-stable` — its fixed ~10min timeout can't cover a BLUE_GREEN
-    # deploy's full bake time (up to 24h), and rolloutState's BLUE_GREEN support is ambiguous in AWS's own docs.
-    # BLUE_GREEN services reject an update-service call with no --load-balancers at all ("advancedConfiguration
-    # field is required for all loadBalancers when using the Blue/green deployment strategy") — AWS requires the
-    # full load-balancer config re-passed on every update, not just once. Re-reads whatever's currently on the
-    # service (Terraform's own doing) and passes it straight back; services with none (task-api, intelligence-
-    # engine) get an empty array here and the flag is skipped, same as before this existed.
-    - shell: bash
-      run: |
-        LOAD_BALANCERS=$(aws ecs describe-services \
-          --cluster "thor-${{ inputs.environment }}" \
-          --services "${{ inputs.service }}" \
-          --query 'services[0].loadBalancers' --output json)
+          # Only patches the image and registers a new revision — Terraform owns everything else about the task def's shape.
+          local FAMILY="thor-${{ inputs.environment }}-${SERVICE}"
+          local CURRENT_TASK_DEF
+          CURRENT_TASK_DEF=$(aws ecs describe-task-definition --task-definition "$FAMILY" --query 'taskDefinition' --output json)
+          local NEW_TASK_DEF
+          NEW_TASK_DEF=$(echo "$CURRENT_TASK_DEF" | jq --arg IMAGE "$IMAGE_URI" \
+            '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+          local NEW_ARN
+          NEW_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
 
-        if [ "$(echo "$LOAD_BALANCERS" | jq 'length')" -gt 0 ]; then
-          aws ecs update-service \
+          # BLUE_GREEN services reject an update-service call with no --load-balancers at all ("advancedConfiguration
+          # field is required for all loadBalancers when using the Blue/green deployment strategy") — AWS requires the
+          # full load-balancer config re-passed on every update, not just once. Re-reads whatever's currently on the
+          # service (Terraform's own doing) and passes it straight back; services with none get an empty array here
+          # and the flag is skipped.
+          local LOAD_BALANCERS
+          LOAD_BALANCERS=$(aws ecs describe-services \
             --cluster "thor-${{ inputs.environment }}" \
-            --service "${{ inputs.service }}" \
-            --task-definition "${{ steps['task-def'].outputs.arn }}" \
-            --load-balancers "$LOAD_BALANCERS" \
-            >/dev/null
-        else
-          aws ecs update-service \
-            --cluster "thor-${{ inputs.environment }}" \
-            --service "${{ inputs.service }}" \
-            --task-definition "${{ steps['task-def'].outputs.arn }}" \
-            >/dev/null
+            --services "$SERVICE" \
+            --query 'services[0].loadBalancers' --output json)
+
+          if [ "$(echo "$LOAD_BALANCERS" | jq 'length')" -gt 0 ]; then
+            aws ecs update-service \
+              --cluster "thor-${{ inputs.environment }}" \
+              --service "$SERVICE" \
+              --task-definition "$NEW_ARN" \
+              --load-balancers "$LOAD_BALANCERS" \
+              >/dev/null
+          else
+            aws ecs update-service \
+              --cluster "thor-${{ inputs.environment }}" \
+              --service "$SERVICE" \
+              --task-definition "$NEW_ARN" \
+              >/dev/null
+          fi
+
+          # Polled manually instead of `aws ecs wait services-stable` — its fixed ~10min timeout can't cover a
+          # BLUE_GREEN deploy's full bake time, and rolloutState's BLUE_GREEN support is ambiguous in AWS's own docs.
+          local TIMEOUT_SECONDS=$(( ${{ inputs.timeout_minutes }} * 60 ))
+          local INTERVAL=15
+          local ELAPSED=0
+
+          while true; do
+            local DEPLOYMENTS
+            DEPLOYMENTS=$(aws ecs describe-services \
+              --cluster "thor-${{ inputs.environment }}" \
+              --services "$SERVICE" \
+              --query 'services[0].deployments' --output json)
+
+            local COUNT
+            COUNT=$(echo "$DEPLOYMENTS" | jq 'length')
+
+            if [ "$COUNT" -eq 1 ]; then
+              local STATUS TASK_DEF RUNNING DESIRED
+              STATUS=$(echo "$DEPLOYMENTS" | jq -r '.[0].status')
+              TASK_DEF=$(echo "$DEPLOYMENTS" | jq -r '.[0].taskDefinition')
+              RUNNING=$(echo "$DEPLOYMENTS" | jq -r '.[0].runningCount')
+              DESIRED=$(echo "$DEPLOYMENTS" | jq -r '.[0].desiredCount')
+
+              if [ "$STATUS" = "PRIMARY" ] && [ "$TASK_DEF" = "$NEW_ARN" ] && [ "$RUNNING" = "$DESIRED" ]; then
+                echo "[$SERVICE] Deployment stable: new task definition is the sole, fully healthy deployment." >&2
+                echo "$NEW_ARN"
+                return 0
+              fi
+
+              if [ "$STATUS" = "PRIMARY" ] && [ "$TASK_DEF" != "$NEW_ARN" ]; then
+                echo "[$SERVICE] Deployment was rolled back: the sole remaining deployment is not the task definition just registered." >&2
+                return 1
+              fi
+            fi
+
+            local FAILED_COUNT
+            FAILED_COUNT=$(echo "$DEPLOYMENTS" | jq -r '[.[] | select(.rolloutState == "FAILED")] | length')
+            if [ "$FAILED_COUNT" -gt 0 ]; then
+              echo "[$SERVICE] ECS reported a FAILED rollout state." >&2
+              return 1
+            fi
+
+            if [ "$ELAPSED" -ge "$TIMEOUT_SECONDS" ]; then
+              echo "[$SERVICE] Timed out after ${TIMEOUT_SECONDS}s waiting to stabilize." >&2
+              return 1
+            fi
+
+            sleep "$INTERVAL"
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+        }
+
+        declare -A PIDS
+        declare -A ARNFILES
+
+        start_deploy() {
+          local SERVICE="$1"
+          local IMAGE_URI="$2"
+          local ARNFILE
+          ARNFILE=$(mktemp)
+          ARNFILES["$SERVICE"]="$ARNFILE"
+          ( deploy_and_wait "$SERVICE" "$IMAGE_URI" > "$ARNFILE" ) &
+          PIDS["$SERVICE"]=$!
+        }
+
+        start_deploy "${{ inputs.service }}" "${{ inputs.image_uri }}"
+
+        # Both siblings started right after — all three update-service calls fire within moments of each other.
+        for SIBLING in thor task-api intelligence-engine; do
+          if [ "$SIBLING" != "${{ inputs.service }}" ]; then
+            SIBLING_IMAGE=$(aws ecs describe-task-definition --task-definition "thor-${{ inputs.environment }}-${SIBLING}" --query 'taskDefinition.containerDefinitions[0].image' --output text)
+            start_deploy "$SIBLING" "$SIBLING_IMAGE"
+          fi
+        done
+
+        FAILED=0
+        for SERVICE in "${!PIDS[@]}"; do
+          wait "${PIDS[$SERVICE]}" || FAILED=1
+        done
+
+        if [ "$FAILED" -ne 0 ]; then
+          echo "One or more of thor/task-api/intelligence-engine failed to deploy — see the [service] log lines above." >&2
+          exit 1
         fi
 
-        NEW_TASK_DEF="${{ steps['task-def'].outputs.arn }}"
-        TIMEOUT_SECONDS=$(( ${{ inputs.timeout_minutes }} * 60 ))
-        INTERVAL=15
-        ELAPSED=0
-
-        while true; do
-          DEPLOYMENTS=$(aws ecs describe-services \
-            --cluster "thor-${{ inputs.environment }}" \
-            --services "${{ inputs.service }}" \
-            --query 'services[0].deployments' --output json)
-
-          COUNT=$(echo "$DEPLOYMENTS" | jq 'length')
-
-          if [ "$COUNT" -eq 1 ]; then
-            STATUS=$(echo "$DEPLOYMENTS" | jq -r '.[0].status')
-            TASK_DEF=$(echo "$DEPLOYMENTS" | jq -r '.[0].taskDefinition')
-            RUNNING=$(echo "$DEPLOYMENTS" | jq -r '.[0].runningCount')
-            DESIRED=$(echo "$DEPLOYMENTS" | jq -r '.[0].desiredCount')
-
-            if [ "$STATUS" = "PRIMARY" ] && [ "$TASK_DEF" = "$NEW_TASK_DEF" ] && [ "$RUNNING" = "$DESIRED" ]; then
-              echo "Deployment stable: new task definition is the sole, fully healthy deployment."
-              exit 0
-            fi
-
-            if [ "$STATUS" = "PRIMARY" ] && [ "$TASK_DEF" != "$NEW_TASK_DEF" ]; then
-              echo "Deployment was rolled back: the sole remaining deployment is not the task definition just registered."
-              exit 1
-            fi
-          fi
-
-          FAILED_COUNT=$(echo "$DEPLOYMENTS" | jq -r '[.[] | select(.rolloutState == "FAILED")] | length')
-          if [ "$FAILED_COUNT" -gt 0 ]; then
-            echo "ECS reported a FAILED rollout state."
-            exit 1
-          fi
-
-          if [ "$ELAPSED" -ge "$TIMEOUT_SECONDS" ]; then
-            echo "Timed out after ${TIMEOUT_SECONDS}s waiting for the deployment to stabilize."
-            exit 1
-          fi
-
-          sleep "$INTERVAL"
-          ELAPSED=$((ELAPSED + INTERVAL))
-        done
+        echo "arn=$(cat "${ARNFILES[${{ inputs.service }}]}")" >> "$GITHUB_OUTPUT"

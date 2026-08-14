@@ -1,33 +1,21 @@
 name: Manifest write
-description: Writes a deploy/<service>/<environment>-image.json manifest and opens a PR against the downstream branch — merging that PR is what triggers the next environment's pipeline.
+description: Writes a deploy/<service>/<environment>-image.json manifest and commits it straight onto the branch that triggered this run. The next environment's own regular branch-promotion PR carries the manifest file forward. Requires the caller to have already run actions/checkout@v4 earlier in the job.
 
 inputs:
   service:
     required: true
   environment:
-    description: The environment that just deployed (dev, qa, or prod) — not the target branch.
+    description: The environment that just deployed (dev, qa, or prod).
     required: true
-  target_branch:
-    description: Branch to open the PR against (qa for a dev manifest, main for a qa manifest). Leave blank for prod's manifest, which commits straight to main instead of opening a PR — nothing downstream reads it.
-    required: false
-    default: ""
   digest:
     description: Image digest (JFrog artifact digest) being promoted
     required: true
   commit_id:
     required: true
-  github_token:
-    required: true
 
 runs:
   using: composite
   steps:
-    # Re-checks out the branch this manifest actually belongs on — the calling job's own checkout is on the source environment's branch (needed to build/deploy), not the downstream branch this file needs to land on.
-    - uses: actions/checkout@v4
-      with:
-        ref: ${{ inputs.target_branch != '' && inputs.target_branch || 'main' }}
-        token: ${{ inputs.github_token }}
-
     - shell: bash
       run: |
         mkdir -p "deploy/${{ inputs.service }}"
@@ -41,27 +29,10 @@ runs:
         }
         EOF
 
-    # prod's manifest has no further downstream stage to trigger — commit it directly rather than open a PR nobody needs to review to unblock anything.
-    - if: inputs.target_branch == ''
-      shell: bash
+    - shell: bash
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add "deploy/${{ inputs.service }}/${{ inputs.environment }}-image.json"
         git commit -m "chore(deploy): record ${{ inputs.service }} ${{ inputs.environment }} deployment (${{ inputs.digest }})" || echo "No changes to commit"
         git push
-
-    - if: inputs.target_branch != ''
-      uses: peter-evans/create-pull-request@v6
-      with:
-        token: ${{ inputs.github_token }}
-        base: ${{ inputs.target_branch }}
-        branch: manifest/${{ inputs.service }}-${{ inputs.environment }}-${{ inputs.commit_id }}
-        commit-message: "chore(deploy): record ${{ inputs.service }} ${{ inputs.environment }} deployment (${{ inputs.digest }})"
-        title: "Promote ${{ inputs.service }} ${{ inputs.environment }} image to ${{ inputs.target_branch }}"
-        body: |
-          Digest: `${{ inputs.digest }}`
-          Commit: `${{ inputs.commit_id }}`
-
-          Merging this PR triggers the next stage's pipeline for `${{ inputs.service }}`.
-        add-paths: deploy/${{ inputs.service }}/${{ inputs.environment }}-image.json
