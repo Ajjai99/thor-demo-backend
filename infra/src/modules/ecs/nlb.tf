@@ -77,6 +77,29 @@ resource "aws_lb_listener" "thor-nlb-listener" {
   tags = var.tags
 }
 
+# Lets test traffic hit the green revision before production traffic cuts over — AWS's optional blue/green
+# "test traffic routing" step. Always created alongside the production listener (even for ROLLING services) so
+# toggling deployment_strategy never tears down the LB; ECS only actually wires it in via advanced_configuration
+# when deployment_strategy is BLUE_GREEN. Same ECS-managed default_action caveat as the production listener.
+resource "aws_lb_listener" "thor-nlb-test-listener" {
+  for_each = local.public_services
+
+  load_balancer_arn = aws_lb.thor-nlb[each.key].arn
+  port              = each.value.nlb_test_listener_port
+  protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.thor-nlb-tg-blue[each.key].arn
+  }
+
+  lifecycle {
+    ignore_changes = [default_action]
+  }
+
+  tags = var.tags
+}
+
 # Trusted by ecs.amazonaws.com (control plane), not ecs-tasks.amazonaws.com like iam.tf's roles.
 data "aws_iam_policy_document" "ecs_service_assume" {
   statement {

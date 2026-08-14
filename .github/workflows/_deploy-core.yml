@@ -30,6 +30,11 @@ on:
         required: false
         type: number
         default: 30
+      changed_services:
+        description: "Comma-separated services also getting their own deploy job this run (e.g. \"task-api,intelligence-engine,\"). Blank means only this one service is deploying, so ecs-deploy syncs both siblings normally."
+        required: false
+        type: string
+        default: ""
 
 # contents: write is for manifest-write's commits.
 permissions:
@@ -126,6 +131,7 @@ jobs:
           service: ${{ inputs.service }}
           image_uri: ${{ steps.image.outputs.ecr_uri }}
           timeout_minutes: ${{ inputs.timeout_minutes }}
+          changed_services: ${{ inputs.changed_services }}
 
       # Commits straight onto dev; dev -> qa's promotion PR carries it forward for qa-deploy to read.
       - uses: ./.github/actions/manifest-write
@@ -200,6 +206,7 @@ jobs:
           service: ${{ inputs.service }}
           image_uri: ${{ steps.image.outputs.candidate_uri }}
           timeout_minutes: ${{ inputs.timeout_minutes }}
+          changed_services: ${{ inputs.changed_services }}
 
       # Stub — see deployment_strategy_plan.md §8. Always passes for now.
       - name: Run integration tests against candidate
@@ -295,6 +302,7 @@ jobs:
           service: ${{ inputs.service }}
           image_uri: ${{ steps.image.outputs.uri }}
           timeout_minutes: ${{ inputs.timeout_minutes }}
+          changed_services: ${{ inputs.changed_services }}
 
       # Nothing downstream reads prod's manifest — this is an audit record only.
       - uses: ./.github/actions/manifest-write
