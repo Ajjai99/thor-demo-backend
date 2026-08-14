@@ -33,21 +33,22 @@ variable "enable_compute" {
 variable "services" {
   description = "Per-service configuration, keyed by service name (thor, task-api, intelligence-engine). expose_publicly=true gets a private NLB (nlb.tf, thor only) reached via VPC Link from API Gateway, not directly from the internet; services with expose_publicly=false accept traffic only from the public services' security groups, reachable internally via Service Connect using the map key as the client_alias dns_name. deployment_strategy=BLUE_GREEN is a per-deploy toggle (deployment_strategy_plan.md reserves it for DB-schema-change deploys) — for a publicly-exposed service it shifts the NLB's production listener between blue/green target groups; for an internal service it's a plain task-set swap."
   type = map(object({
-    container_image       = string
-    container_port        = number
-    cpu                   = number
-    memory                = number
-    desired_count         = number
-    min_healthy_percent   = number
-    max_percent           = number
-    health_check_path     = string
-    log_retention_days    = number
-    environment_variables = map(string)
-    secrets               = map(string)
-    expose_publicly       = bool
-    nlb_listener_port     = optional(number)
-    deployment_strategy   = string
-    bake_time_in_minutes  = number
+    container_image        = string
+    container_port         = number
+    cpu                    = number
+    memory                 = number
+    desired_count          = number
+    min_healthy_percent    = number
+    max_percent            = number
+    health_check_path      = string
+    log_retention_days     = number
+    environment_variables  = map(string)
+    secrets                = map(string)
+    expose_publicly        = bool
+    nlb_listener_port      = optional(number)
+    nlb_test_listener_port = optional(number)
+    deployment_strategy    = string
+    bake_time_in_minutes   = number
   }))
 
   validation {

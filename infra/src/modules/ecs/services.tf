@@ -108,6 +108,7 @@ resource "aws_ecs_service" "thor-svc" {
         content {
           alternate_target_group_arn = aws_lb_target_group.thor-nlb-tg-green[each.key].arn
           production_listener_rule   = aws_lb_listener.thor-nlb-listener[each.key].arn
+          test_listener_rule         = aws_lb_listener.thor-nlb-test-listener[each.key].arn
           role_arn                   = aws_iam_role.blue_green[each.key].arn
         }
       }

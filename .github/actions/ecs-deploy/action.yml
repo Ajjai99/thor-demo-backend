@@ -1,5 +1,5 @@
 name: ECS deploy
-description: Registers a new task definition revision pointing at the given image, deploys it, and waits for the rollout (rolling or native blue/green) to stabilize. Also redeploys the other two of thor/task-api/intelligence-engine with their current image (no rebuild) at the same time, so all three deployments/bake windows run concurrently instead of one after another.
+description: Registers a new task definition revision pointing at the given image, deploys it, and waits for the rollout (rolling or native blue/green) to stabilize. Also redeploys the other two of thor/task-api/intelligence-engine with their current image (no rebuild) at the same time, so all three deployments/bake windows run concurrently instead of one after another — unless changed_services says a sibling has its own deploy job this run, in which case it's skipped to avoid two jobs targeting the same ECS service at once.
 
 inputs:
   environment:
@@ -11,6 +11,10 @@ inputs:
   timeout_minutes:
     required: false
     default: "30"
+  changed_services:
+    description: "Comma-separated services also getting their own deploy job this run. Blank means this is the only service deploying, so both siblings get synced normally."
+    required: false
+    default: ""
 
 outputs:
   task_definition_arn:
@@ -19,11 +23,8 @@ outputs:
 runs:
   using: composite
   steps:
-    # deploy_and_wait is launched as a background job (&) for the main service and both siblings, so all three
-    # update-service calls fire within moments of each other and their wait loops (including BLUE_GREEN bake
-    # time) run concurrently — `wait` only blocks the shell, not the three background jobs polling AWS.
-    # Composite `run:` steps use `bash -e`, and an async command (one started with &) is explicitly exempt from
-    # errexit — only the `wait $PID || ...` lines need their own failure handling, which they have.
+    # deploy_and_wait runs as a background job (&) for the main service and both siblings, so all three deploys
+    # (and any BLUE_GREEN bake) run concurrently — async commands are exempt from bash -e, so only `wait` needs its own error handling.
     - id: deploy
       shell: bash
       run: |
@@ -41,11 +42,8 @@ runs:
           local NEW_ARN
           NEW_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
 
-          # BLUE_GREEN services reject an update-service call with no --load-balancers at all ("advancedConfiguration
-          # field is required for all loadBalancers when using the Blue/green deployment strategy") — AWS requires the
-          # full load-balancer config re-passed on every update, not just once. Re-reads whatever's currently on the
-          # service (Terraform's own doing) and passes it straight back; services with none get an empty array here
-          # and the flag is skipped.
+          # BLUE_GREEN rejects update-service with no --load-balancers at all — AWS requires the full config
+          # re-passed on every update. Re-reads what's currently on the service and passes it straight back; services with none get an empty array and the flag is skipped.
           local LOAD_BALANCERS
           LOAD_BALANCERS=$(aws ecs describe-services \
             --cluster "thor-${{ inputs.environment }}" \
@@ -67,8 +65,7 @@ runs:
               >/dev/null
           fi
 
-          # Polled manually instead of `aws ecs wait services-stable` — its fixed ~10min timeout can't cover a
-          # BLUE_GREEN deploy's full bake time, and rolloutState's BLUE_GREEN support is ambiguous in AWS's own docs.
+          # Polled manually — aws ecs wait services-stable's fixed ~10min timeout can't cover a full BLUE_GREEN bake.
           local TIMEOUT_SECONDS=$(( ${{ inputs.timeout_minutes }} * 60 ))
           local INTERVAL=15
           local ELAPSED=0
@@ -134,13 +131,31 @@ runs:
 
         start_deploy "${{ inputs.service }}" "${{ inputs.image_uri }}"
 
-        # Both siblings started right after — all three update-service calls fire within moments of each other.
-        for SIBLING in thor task-api intelligence-engine; do
-          if [ "$SIBLING" != "${{ inputs.service }}" ]; then
-            SIBLING_IMAGE=$(aws ecs describe-task-definition --task-definition "thor-${{ inputs.environment }}-${SIBLING}" --query 'taskDefinition.containerDefinitions[0].image' --output text)
-            start_deploy "$SIBLING" "$SIBLING_IMAGE"
-          fi
+        # When several services change in one push, each gets its own deploy job — only the first of them (fixed
+        # thor/task-api/intelligence-engine order) also syncs whichever services stayed the same, so no two jobs
+        # ever target the same ECS service at once. Blank changed_services (single-service runs, manual dispatch)
+        # always syncs both siblings, same as before.
+        PRIMARY=""
+        for S in thor task-api intelligence-engine; do
+          case ",${{ inputs.changed_services }}," in
+            *",$S,"*) PRIMARY="$S"; break ;;
+          esac
         done
+
+        if [ -z "${{ inputs.changed_services }}" ] || [ "$PRIMARY" = "${{ inputs.service }}" ]; then
+          for SIBLING in thor task-api intelligence-engine; do
+            if [ "$SIBLING" != "${{ inputs.service }}" ]; then
+              case ",${{ inputs.changed_services }}," in
+                *",$SIBLING,"*)
+                  echo "[$SIBLING] Skipping sync — it changed too and has its own deploy job this run." >&2
+                  continue
+                  ;;
+              esac
+              SIBLING_IMAGE=$(aws ecs describe-task-definition --task-definition "thor-${{ inputs.environment }}-${SIBLING}" --query 'taskDefinition.containerDefinitions[0].image' --output text)
+              start_deploy "$SIBLING" "$SIBLING_IMAGE"
+            fi
+          done
+        fi
 
         FAILED=0
         for SERVICE in "${!PIDS[@]}"; do
