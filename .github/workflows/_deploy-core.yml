@@ -51,6 +51,8 @@ jobs:
         working-directory: backend/services/${{ inputs.service }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+    outputs:
+      digest: ${{ steps.digest.outputs.ref }}
 
     steps:
       - uses: actions/checkout@v4
@@ -133,12 +135,25 @@ jobs:
           timeout_minutes: ${{ inputs.timeout_minutes }}
           changed_services: ${{ inputs.changed_services }}
 
+  # Its own job (not a step in dev, above) so a concurrency group can serialize it: two services changing in the
+  # same push both reach this point around the same time, and without serializing, whichever commits+pushes to
+  # dev second gets rejected as non-fast-forward. Same pattern infra.yml already uses.
+  dev-manifest:
+    needs: dev
+    if: inputs.environment == 'dev' && needs.dev.result == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: manifest-write-dev
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
       # Commits straight onto dev; dev -> qa's promotion PR carries it forward for qa-deploy to read.
       - uses: ./.github/actions/manifest-write
         with:
           service: ${{ inputs.service }}
           environment: dev
-          digest: ${{ steps.digest.outputs.ref }}
+          digest: ${{ needs.dev.outputs.digest }}
           commit_id: ${{ github.sha }}
 
   qa-deploy:
@@ -247,6 +262,18 @@ jobs:
           docker tag "${CANDIDATE_URI}" "${VERIFIED_URI}"
           docker push "${VERIFIED_URI}"
 
+  # Own job, same reason as dev-manifest — serializes concurrent manifest commits from multiple services
+  # promoted in the same batch instead of racing their git pushes.
+  qa-promote-manifest:
+    needs: [qa-deploy, qa-promote]
+    if: inputs.environment == 'qa' && needs['qa-promote'].result == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: manifest-write-qa
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
       # Commits straight onto qa; qa -> main's promotion PR carries it forward for prod to read.
       - uses: ./.github/actions/manifest-write
         with:
@@ -261,6 +288,9 @@ jobs:
     environment: prod
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+    outputs:
+      digest: ${{ steps.manifest.outputs.digest }}
+      tag: ${{ steps.manifest.outputs.tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -304,10 +334,21 @@ jobs:
           timeout_minutes: ${{ inputs.timeout_minutes }}
           changed_services: ${{ inputs.changed_services }}
 
-      # Nothing downstream reads prod's manifest — this is an audit record only.
+  # Own job, same reason as dev-manifest/qa-promote-manifest — serializes concurrent manifest commits instead
+  # of racing their git pushes. Nothing downstream reads prod's manifest — this is an audit record only.
+  prod-manifest:
+    needs: prod
+    if: inputs.environment == 'prod' && needs.prod.result == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: manifest-write-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: ./.github/actions/manifest-write
         with:
           service: ${{ inputs.service }}
           environment: prod
-          digest: ${{ steps.manifest.outputs.digest }}
-          commit_id: ${{ steps.manifest.outputs.tag }}
+          digest: ${{ needs.prod.outputs.digest }}
+          commit_id: ${{ needs.prod.outputs.tag }}

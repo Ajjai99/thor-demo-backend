@@ -43,17 +43,19 @@ resource "aws_lb_target_group" "thor-nlb-tg-green" {
   tags = var.tags
 }
 
-# Internal — reached via VPC Link from API Gateway, not directly from the internet.
+# Internal — reached via VPC Link from API Gateway, not directly from the internet. name is thor-nlb-<environment>,
+# not the shared name_prefix — deliberately different, since there's only ever one shared public NLB, not one
+# per service. Renaming an existing LB forces destroy+recreate (AWS names are immutable), applied deliberately.
 resource "aws_lb" "thor-nlb" {
   for_each = local.public_services
 
-  name               = local.name_prefix[each.key]
+  name               = "thor-nlb-${var.environment}"
   load_balancer_type = "network"
   internal           = true
   subnets            = var.private_subnet_ids
 
   tags = merge(var.tags, {
-    Name = "${local.name_prefix[each.key]}-nlb"
+    Name = "thor-nlb-${var.environment}"
   })
 }
 
@@ -85,7 +87,7 @@ resource "aws_lb_listener" "thor-nlb-test-listener" {
   for_each = local.public_services
 
   load_balancer_arn = aws_lb.thor-nlb[each.key].arn
-  port              = each.value.nlb_test_listener_port
+  port              = coalesce(each.value.nlb_test_listener_port, 8081)
   protocol          = "TCP"
 
   default_action {
