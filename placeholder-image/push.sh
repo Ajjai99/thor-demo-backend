@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the placeholder image and pushes it to thor/task-api/intelligence-engine's
+# Builds the placeholder image and pushes it to thor-api/task-api/intelligence-engine's
 # ECR repos for one environment, at the "latest" tag.
 #
 # Usage: ./push.sh [environment] [region] [aws_profile]
@@ -13,7 +13,7 @@ set -euo pipefail
 ENVIRONMENT="${1:-dev}"
 REGION="${2:-us-east-1}"
 export AWS_PROFILE="${3:-${AWS_PROFILE:-default}}"
-SERVICES=(thor task-api intelligence-engine)
+SERVICES=(thor-api task-api intelligence-engine)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"

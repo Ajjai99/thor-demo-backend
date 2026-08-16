@@ -22,7 +22,7 @@ inputs = {
 
   # container_image = "" falls back to that service's own ECR repo at the "latest" tag; set it explicitly once CI promotes a real image. ROLLING, not BLUE_GREEN — the test-traffic listener now exists (nlb.tf), but nothing in the pipeline actually exercises it against green before cutover yet.
   services = {
-    thor = {
+    thor-api = {
       container_image        = ""
       container_port         = 8080
       cpu                    = 1024

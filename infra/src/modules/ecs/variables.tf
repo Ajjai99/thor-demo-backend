@@ -31,7 +31,7 @@ variable "enable_compute" {
 }
 
 variable "services" {
-  description = "Per-service configuration, keyed by service name (thor, task-api, intelligence-engine). expose_publicly=true gets a private NLB (nlb.tf, thor only) reached via VPC Link from API Gateway, not directly from the internet; services with expose_publicly=false accept traffic only from the public services' security groups, reachable internally via Service Connect using the map key as the client_alias dns_name. deployment_strategy=BLUE_GREEN is a per-deploy toggle (deployment_strategy_plan.md reserves it for DB-schema-change deploys) — for a publicly-exposed service it shifts the NLB's production listener between blue/green target groups; for an internal service it's a plain task-set swap."
+  description = "Per-service configuration, keyed by service name (thor-api, task-api, intelligence-engine). expose_publicly=true gets a private NLB (nlb.tf, thor-api only) reached via VPC Link from API Gateway, not directly from the internet; services with expose_publicly=false accept traffic only from the public services' security groups, reachable internally via Service Connect using the map key as the client_alias dns_name. deployment_strategy=BLUE_GREEN is a per-deploy toggle (deployment_strategy_plan.md reserves it for DB-schema-change deploys) — for a publicly-exposed service it shifts the NLB's production listener between blue/green target groups; for an internal service it's a plain task-set swap."
   type = map(object({
     container_image        = string
     container_port         = number
@@ -70,12 +70,12 @@ variable "cross_account_pull_principal_arns" {
 
 variable "aurora_cluster_arn" {
   type        = string
-  description = "Aurora cluster ARN — RDS Data API's resourceArn parameter for thor/task-api's task role"
+  description = "Aurora cluster ARN — RDS Data API's resourceArn parameter for thor-api/task-api's task role"
 }
 
 variable "aurora_secret_arn" {
   type        = string
-  description = "Aurora master user secret ARN — RDS Data API's secretArn parameter for thor/task-api's task role"
+  description = "Aurora master user secret ARN — RDS Data API's secretArn parameter for thor-api/task-api's task role"
 }
 
 variable "tags" {

@@ -67,7 +67,7 @@ variable "dev_private_subnet_ids" {
   default     = []
 }
 
-# --- compute (shared ECS cluster running thor, task-api, intelligence-engine) ---
+# --- compute (shared ECS cluster running thor-api, task-api, intelligence-engine) ---
 
 variable "enable_compute" {
   type        = bool
@@ -76,7 +76,7 @@ variable "enable_compute" {
 }
 
 variable "services" {
-  description = "Per-service configuration for the shared ECS cluster, keyed by service name. Must define thor, task-api, and intelligence-engine, with thor the only one setting expose_publicly = true (a private NLB reached via VPC Link from API Gateway, not the internet directly — no ALB). deployment_strategy=BLUE_GREEN is a per-deploy toggle (reserved for DB-schema-change deploys per deployment_strategy_plan.md), not a fixed per-service default."
+  description = "Per-service configuration for the shared ECS cluster, keyed by service name. Must define thor-api, task-api, and intelligence-engine, with thor-api the only one setting expose_publicly = true (a private NLB reached via VPC Link from API Gateway, not the internet directly — no ALB). deployment_strategy=BLUE_GREEN is a per-deploy toggle (reserved for DB-schema-change deploys per deployment_strategy_plan.md), not a fixed per-service default."
   type = map(object({
     container_image       = string
     container_port        = number
@@ -96,13 +96,13 @@ variable "services" {
   }))
 
   validation {
-    condition     = alltrue([for k in ["thor", "task-api", "intelligence-engine"] : contains(keys(var.services), k)])
-    error_message = "var.services must define an entry for each of: thor, task-api, intelligence-engine."
+    condition     = alltrue([for k in ["thor-api", "task-api", "intelligence-engine"] : contains(keys(var.services), k)])
+    error_message = "var.services must define an entry for each of: thor-api, task-api, intelligence-engine."
   }
 
   validation {
-    condition     = contains(keys(var.services), "thor") ? var.services["thor"].expose_publicly == true : true
-    error_message = "var.services.thor.expose_publicly must be true — thor is the only internet-facing service; task-api and intelligence-engine must stay internal."
+    condition     = contains(keys(var.services), "thor-api") ? var.services["thor-api"].expose_publicly == true : true
+    error_message = "var.services.thor-api.expose_publicly must be true — thor-api is the only internet-facing service; task-api and intelligence-engine must stay internal."
   }
 
   validation {

@@ -1,5 +1,5 @@
 name: ECS deploy
-description: Registers a new task definition revision pointing at the given image, deploys it, and waits for the rollout (rolling or native blue/green) to stabilize. Also redeploys the other two of thor/task-api/intelligence-engine with their current image (no rebuild) at the same time, so all three deployments/bake windows run concurrently instead of one after another — unless changed_services says a sibling has its own deploy job this run, in which case it's skipped to avoid two jobs targeting the same ECS service at once.
+description: Registers a new task definition revision pointing at the given image, deploys it, and waits for the rollout (rolling or native blue/green) to stabilize. Also redeploys the other two of thor-api/task-api/intelligence-engine with their current image (no rebuild) at the same time, so all three deployments/bake windows run concurrently instead of one after another — unless changed_services says a sibling has its own deploy job this run, in which case it's skipped to avoid two jobs targeting the same ECS service at once.
 
 inputs:
   environment:
@@ -132,18 +132,18 @@ runs:
         start_deploy "${{ inputs.service }}" "${{ inputs.image_uri }}"
 
         # When several services change in one push, each gets its own deploy job — only the first of them (fixed
-        # thor/task-api/intelligence-engine order) also syncs whichever services stayed the same, so no two jobs
+        # thor-api/task-api/intelligence-engine order) also syncs whichever services stayed the same, so no two jobs
         # ever target the same ECS service at once. Blank changed_services (single-service runs, manual dispatch)
         # always syncs both siblings, same as before.
         PRIMARY=""
-        for S in thor task-api intelligence-engine; do
+        for S in thor-api task-api intelligence-engine; do
           case ",${{ inputs.changed_services }}," in
             *",$S,"*) PRIMARY="$S"; break ;;
           esac
         done
 
         if [ -z "${{ inputs.changed_services }}" ] || [ "$PRIMARY" = "${{ inputs.service }}" ]; then
-          for SIBLING in thor task-api intelligence-engine; do
+          for SIBLING in thor-api task-api intelligence-engine; do
             if [ "$SIBLING" != "${{ inputs.service }}" ]; then
               case ",${{ inputs.changed_services }}," in
                 *",$SIBLING,"*)
@@ -163,7 +163,7 @@ runs:
         done
 
         if [ "$FAILED" -ne 0 ]; then
-          echo "One or more of thor/task-api/intelligence-engine failed to deploy — see the [service] log lines above." >&2
+          echo "One or more of thor-api/task-api/intelligence-engine failed to deploy — see the [service] log lines above." >&2
           exit 1
         fi
 

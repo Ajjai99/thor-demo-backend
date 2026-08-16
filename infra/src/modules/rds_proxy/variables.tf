@@ -31,7 +31,7 @@ variable "aurora_secret_arn" {
 variable "allowed_security_group_ids" {
   type        = map(string)
   default     = {}
-  description = "Security group IDs allowed to reach the proxy on 5432, one ingress rule per entry — keyed by a static consumer name (e.g. \"thor\", \"task-api\"), same reasoning as the aurora module's own variable of this name."
+  description = "Security group IDs allowed to reach the proxy on 5432, one ingress rule per entry — keyed by a static consumer name (e.g. \"thor-api\", \"task-api\"), same reasoning as the aurora module's own variable of this name."
 }
 
 variable "tags" {
