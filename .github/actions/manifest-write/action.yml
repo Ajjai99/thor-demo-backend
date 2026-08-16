@@ -1,5 +1,5 @@
 name: Manifest write
-description: Writes a deploy/<service>/<environment>-image.json manifest via the GitHub Contents API — no local git commands, no checkout dependency. Retries with a fresh SHA on a conflicting write, so a push from anywhere else in between read and write just costs one retry, not a rejected git push.
+description: "Writes a deploy/<service>/<environment>-image.json manifest via the GitHub Contents API — no local git commands, and this action's own logic doesn't read/write the working tree. The caller still needs its own actions/checkout@v4 earlier in the job though, since a local uses: reference always needs the repo physically present to resolve the action itself. Retries with a fresh SHA on a conflicting write, so a push from anywhere else in between read and write just costs one retry, not a rejected git push."
 
 inputs:
   service:
