@@ -18,6 +18,12 @@ resource "aws_security_group" "service" {
   tags = merge(var.tags, {
     Name = "${local.name_prefix[each.key]}-service-sg"
   })
+
+  # An org SCP blocks logs:UntagResource-style tag removal even for the CI role — Terraform otherwise tries to
+  # strip out-of-band governance tags (c7n-*) it doesn't know about, which the SCP then rejects outright.
+  lifecycle {
+    ignore_changes = [tags_all]
+  }
 }
 
 # Public-facing services: ingress from anywhere in the VPC — the NLB has no SG, so this is effectively "from the NLB."
