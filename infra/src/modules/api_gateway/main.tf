@@ -26,6 +26,11 @@ resource "aws_security_group" "vpc_link" {
   tags = merge(var.tags, {
     Name = "${var.service_name}-${var.environment}-vpclink-sg"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_apigatewayv2_vpc_link" "thor-apigw-vpclink" {

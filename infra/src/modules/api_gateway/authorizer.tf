@@ -2,13 +2,13 @@
 resource "aws_apigatewayv2_authorizer" "thor-api-key" {
   count = var.enable_authorizer ? 1 : 0
 
-  api_id                             = aws_apigatewayv2_api.thor-apigw-api.id
-  name                               = "${var.service_name}-${var.environment}-authorizer"
-  authorizer_type                    = "REQUEST"
-  authorizer_uri                     = var.authorizer_lambda_invoke_arn
-  authorizer_payload_format_version  = "1.0"
-  identity_sources                   = ["$request.header.x-api-key"]
-  authorizer_result_ttl_in_seconds   = 300
+  api_id                            = aws_apigatewayv2_api.thor-apigw-api.id
+  name                              = "${var.service_name}-${var.environment}-authorizer"
+  authorizer_type                   = "REQUEST"
+  authorizer_uri                    = var.authorizer_lambda_invoke_arn
+  authorizer_payload_format_version = "1.0"
+  identity_sources                  = ["$request.header.x-api-key"]
+  authorizer_result_ttl_in_seconds  = 300
 }
 
 # Grants API Gateway permission to invoke the authorizer Lambda.

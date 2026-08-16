@@ -57,6 +57,11 @@ resource "aws_lb" "thor-nlb" {
   tags = merge(var.tags, {
     Name = "thor-nlb-${var.environment}"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # ECS modifies default_action during blue/green deploys — ignore it here to avoid fighting that.
