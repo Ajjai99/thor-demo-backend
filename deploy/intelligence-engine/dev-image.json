@@ -1,7 +1,7 @@
 {
   "service": "intelligence-engine",
   "environment": "dev",
-  "digest": "trialc6mgth.jfrog.io/docker-container-image/intelligence-engine@sha256:9c4dd0488371f9cf53dccff91476b91cfb20df5b3ce6f9d1ad7d6e06a174fece",
-  "commitId": "6be2f300cc6df24cb7ccdda557bccfc788d24ab8",
-  "deployedAt": "2026-08-16T13:01:42Z"
+  "digest": "trialc6mgth.jfrog.io/docker-container-image/intelligence-engine@sha256:afd6309ca88ebf28ce3feb5f703ca90a44bcf3818bf2c3f97257f4726933acfd",
+  "commitId": "2356acf64e718d8cda0b045940fa2ffca7c52013",
+  "deployedAt": "2026-08-16T16:23:56Z"
 }
