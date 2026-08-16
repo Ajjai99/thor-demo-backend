@@ -32,17 +32,19 @@ output "ecr_repository_urls" {
   value       = module.ecs.ecr_repository_urls
 }
 
-# Guarded because these index the "thor" map key, which only exists once enable_compute is true.
+# Guarded because these index the "thor-api" map key, which only exists once enable_compute is true. Output
+# names kept as thor_* (stable external interface referring to "the main/public service") even though the
+# underlying service key is thor-api.
 output "thor_target_group_arn" {
-  value = var.enable_compute ? module.ecs.target_group_arns["thor"] : null
+  value = var.enable_compute ? module.ecs.target_group_arns["thor-api"] : null
 }
 
 output "thor_nlb_arn" {
-  value = var.enable_compute ? module.ecs.nlb_arns["thor"] : null
+  value = var.enable_compute ? module.ecs.nlb_arns["thor-api"] : null
 }
 
 output "thor_nlb_dns_name" {
-  value = var.enable_compute ? module.ecs.nlb_dns_names["thor"] : null
+  value = var.enable_compute ? module.ecs.nlb_dns_names["thor-api"] : null
 }
 
 output "api_gateway_invoke_url" {
@@ -51,7 +53,7 @@ output "api_gateway_invoke_url" {
 }
 
 output "thor_service_security_group_id" {
-  value = var.enable_compute ? module.ecs.service_security_group_ids["thor"] : null
+  value = var.enable_compute ? module.ecs.service_security_group_ids["thor-api"] : null
 }
 
 output "service_names" {

@@ -5,8 +5,8 @@ variable "environment" {
 
 variable "service_name" {
   type        = string
-  description = "Name of the service this API Gateway fronts (currently always \"thor\", the only publicly-exposed service)"
-  default     = "thor"
+  description = "Name of the service this API Gateway fronts (currently always \"thor-api\", the only publicly-exposed service)"
+  default     = "thor-api"
 }
 
 variable "nlb_listener_arn" {

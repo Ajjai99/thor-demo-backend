@@ -1,6 +1,6 @@
 {
-  "service": "thor",
-  "environment": "prod",
+  "service": "thor-api",
+  "environment": "dev",
   "digest": "",
   "commitId": "",
   "deployedAt": ""

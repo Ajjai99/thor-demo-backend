@@ -58,9 +58,9 @@ resource "aws_iam_role_policy_attachment" "task_xray" {
   policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
 }
 
-# thor/task-api's own Aurora access via RDS Data API — add more statements here as the task role needs more permissions.
+# thor-api/task-api's own Aurora access via RDS Data API — add more statements here as the task role needs more permissions.
 data "aws_iam_policy_document" "task_permissions" {
-  for_each = { for k, v in local.active_services : k => v if contains(["thor", "task-api"], k) }
+  for_each = { for k, v in local.active_services : k => v if contains(["thor-api", "task-api"], k) }
 
   statement {
     actions   = ["rds-data:ExecuteStatement"]

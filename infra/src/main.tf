@@ -32,9 +32,9 @@ locals {
   # Proxy endpoint when enabled, Aurora's own endpoint otherwise.
   db_host = var.enable_rds_proxy ? module.rds_proxy[0].endpoint : module.aurora.endpoint
 
-  # Shared Aurora connection info, merged into thor/task-api only (service-specific values stay in terragrunt.hcl).
+  # Shared Aurora connection info, merged into thor-api/task-api only (service-specific values stay in terragrunt.hcl).
   services_with_shared_secrets = {
-    for k, v in var.services : k => contains(["thor", "task-api"], k) ? merge(v, {
+    for k, v in var.services : k => contains(["thor-api", "task-api"], k) ? merge(v, {
       secrets = merge(v.secrets, {
         DB_USERNAME = "${module.aurora.master_user_secret_arn}:username::"
         DB_PASSWORD = "${module.aurora.master_user_secret_arn}:password::"
@@ -137,7 +137,7 @@ module "aurora" {
   vpc_id             = local.vpc_id
   vpc_cidr           = local.vpc_cidr_effective
   private_subnet_ids = local.private_subnet_ids
-  # Only the proxy reaches Aurora directly — thor/task-api go through it, not around it.
+  # Only the proxy reaches Aurora directly — thor-api/task-api go through it, not around it.
   allowed_security_group_ids = var.enable_rds_proxy ? {
     rds-proxy = module.rds_proxy[0].rds_proxy_security_group_id
   } : {}
@@ -154,7 +154,7 @@ module "aurora" {
   tags = var.tags
 }
 
-# Connection pooling in front of Aurora — thor/task-api connect here instead of Aurora's own endpoint.
+# Connection pooling in front of Aurora — thor-api/task-api connect here instead of Aurora's own endpoint.
 module "rds_proxy" {
   count = var.enable_rds_proxy ? 1 : 0
 
@@ -169,7 +169,7 @@ module "rds_proxy" {
   aurora_secret_arn         = module.aurora.master_user_secret_arn
 
   allowed_security_group_ids = var.enable_compute ? {
-    thor     = module.ecs.service_security_group_ids["thor"]
+    thor-api = module.ecs.service_security_group_ids["thor-api"]
     task-api = module.ecs.service_security_group_ids["task-api"]
   } : {}
 

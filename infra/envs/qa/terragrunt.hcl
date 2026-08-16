@@ -36,7 +36,7 @@ inputs = {
 
   # container_image = "" falls back to that service's own ECR repo at the "latest" tag; set it explicitly to pin a specific tag.
   services = {
-    thor = {
+    thor-api = {
       container_image        = ""
       container_port         = 8080
       cpu                    = 512

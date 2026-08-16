@@ -1,5 +1,5 @@
 {
-  "service": "thor",
+  "service": "thor-api",
   "environment": "qa",
   "digest": "",
   "commitId": "",

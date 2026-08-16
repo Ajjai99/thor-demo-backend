@@ -23,7 +23,7 @@ on:
         description: "Service to deploy"
         required: true
         type: choice
-        options: [thor, task-api, intelligence-engine]
+        options: [thor-api, task-api, intelligence-engine]
       image_digest:
         description: "JFrog digest to deploy (blank = normal resolution for this environment's trigger)"
         required: false
@@ -39,8 +39,8 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     outputs:
-      thor-source: ${{ steps.filter.outputs['thor-source'] }}
-      thor-manifest: ${{ steps.filter.outputs['thor-manifest'] }}
+      thor-api-source: ${{ steps.filter.outputs['thor-api-source'] }}
+      thor-api-manifest: ${{ steps.filter.outputs['thor-api-manifest'] }}
       task-api-source: ${{ steps.filter.outputs['task-api-source'] }}
       task-api-manifest: ${{ steps.filter.outputs['task-api-manifest'] }}
       intelligence-engine-source: ${{ steps.filter.outputs['intelligence-engine-source'] }}
@@ -58,11 +58,11 @@ jobs:
         with:
           base: ${{ github.event_name == 'push' && github.ref_name || '' }}
           filters: |
-            thor-source:
-              - 'backend/services/thor/**'
+            thor-api-source:
+              - 'backend/services/thor-api/**'
               - 'backend/shared/**'
-            thor-manifest:
-              - 'deploy/thor/*.json'
+            thor-api-manifest:
+              - 'deploy/thor-api/*.json'
             task-api-source:
               - 'backend/services/task-api/**'
               - 'backend/shared/**'
@@ -81,7 +81,7 @@ jobs:
     outputs:
       environment: ${{ steps.set.outputs.environment }}
       mode: ${{ steps.set.outputs.mode }}
-      thor: ${{ steps.set.outputs.thor }}
+      thor-api: ${{ steps.set.outputs['thor-api'] }}
       task-api: ${{ steps.set.outputs['task-api'] }}
       intelligence-engine: ${{ steps.set.outputs['intelligence-engine'] }}
       changed_services: ${{ steps.set.outputs.changed_services }}
@@ -109,33 +109,33 @@ jobs:
 
           # Preview and dev both read the source filter; qa/main read the manifest filter.
           if [ "${{ github.event_name }}" = "pull_request" ] || [ "$BRANCH" = "dev" ]; then
-            THOR="${{ needs['detect-changes'].outputs['thor-source'] }}"
+            THOR_API="${{ needs['detect-changes'].outputs['thor-api-source'] }}"
             TASK_API="${{ needs['detect-changes'].outputs['task-api-source'] }}"
             INTELLIGENCE_ENGINE="${{ needs['detect-changes'].outputs['intelligence-engine-source'] }}"
           else
-            THOR="${{ needs['detect-changes'].outputs['thor-manifest'] }}"
+            THOR_API="${{ needs['detect-changes'].outputs['thor-api-manifest'] }}"
             TASK_API="${{ needs['detect-changes'].outputs['task-api-manifest'] }}"
             INTELLIGENCE_ENGINE="${{ needs['detect-changes'].outputs['intelligence-engine-manifest'] }}"
           fi
 
-          echo "thor=$THOR" >> "$GITHUB_OUTPUT"
+          echo "thor-api=$THOR_API" >> "$GITHUB_OUTPUT"
           echo "task-api=$TASK_API" >> "$GITHUB_OUTPUT"
           echo "intelligence-engine=$INTELLIGENCE_ENGINE" >> "$GITHUB_OUTPUT"
 
           # Every service getting its own deploy-<service> job this run — tells ecs-deploy which siblings NOT
           # to sync, since those already have their own job deploying them for real.
           CHANGED=""
-          [ "$THOR" = "true" ] && CHANGED="${CHANGED}thor,"
+          [ "$THOR_API" = "true" ] && CHANGED="${CHANGED}thor-api,"
           [ "$TASK_API" = "true" ] && CHANGED="${CHANGED}task-api,"
           [ "$INTELLIGENCE_ENGINE" = "true" ] && CHANGED="${CHANGED}intelligence-engine,"
           echo "changed_services=$CHANGED" >> "$GITHUB_OUTPUT"
 
-  deploy-thor:
+  deploy-thor-api:
     needs: context
-    if: needs.context.outputs.mode != 'preview' && needs.context.outputs.thor == 'true'
+    if: needs.context.outputs.mode != 'preview' && needs.context.outputs['thor-api'] == 'true'
     uses: ./.github/workflows/_deploy-core.yml
     with:
-      service: thor
+      service: thor-api
       environment: ${{ needs.context.outputs.environment }}
       mode: ${{ needs.context.outputs.mode }}
       changed_services: ${{ needs.context.outputs.changed_services }}
@@ -163,12 +163,12 @@ jobs:
       changed_services: ${{ needs.context.outputs.changed_services }}
     secrets: inherit
 
-  preview-thor:
+  preview-thor-api:
     needs: context
-    if: needs.context.outputs.mode == 'preview' && needs.context.outputs.thor == 'true'
+    if: needs.context.outputs.mode == 'preview' && needs.context.outputs['thor-api'] == 'true'
     uses: ./.github/workflows/deploy-preview.yml
     with:
-      service: thor
+      service: thor-api
     secrets: inherit
 
   preview-task-api:
