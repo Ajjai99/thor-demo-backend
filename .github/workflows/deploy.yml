@@ -196,3 +196,55 @@ jobs:
       mode: ${{ inputs.environment == 'dev' && 'deploy' || 'promote' }}
       image_digest: ${{ inputs.image_digest }}
     secrets: inherit
+
+  # _deploy-core.yml only exposes digest/commit_id as outputs now — actually writing the manifest happens here,
+  # once per push, instead of once per service, so N services changing at once never race each other's writes.
+  # always(): deploy-<service> jobs that were skipped (their service didn't change) aren't "success", so the
+  # default needs: gate would otherwise skip this job too whenever fewer than all three services changed.
+  write-manifests:
+    needs: [context, deploy-thor-api, deploy-task-api, deploy-intelligence-engine]
+    if: always() && needs.context.result == 'success' && needs.context.outputs.mode != 'preview'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write thor-api's manifest
+        if: needs['deploy-thor-api'].outputs.digest != ''
+        uses: ./.github/actions/manifest-write
+        with:
+          service: thor-api
+          environment: ${{ needs.context.outputs.environment }}
+          digest: ${{ needs['deploy-thor-api'].outputs.digest }}
+          commit_id: ${{ needs['deploy-thor-api'].outputs.commit_id }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write task-api's manifest
+        if: needs['deploy-task-api'].outputs.digest != ''
+        uses: ./.github/actions/manifest-write
+        with:
+          service: task-api
+          environment: ${{ needs.context.outputs.environment }}
+          digest: ${{ needs['deploy-task-api'].outputs.digest }}
+          commit_id: ${{ needs['deploy-task-api'].outputs.commit_id }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write intelligence-engine's manifest
+        if: needs['deploy-intelligence-engine'].outputs.digest != ''
+        uses: ./.github/actions/manifest-write
+        with:
+          service: intelligence-engine
+          environment: ${{ needs.context.outputs.environment }}
+          digest: ${{ needs['deploy-intelligence-engine'].outputs.digest }}
+          commit_id: ${{ needs['deploy-intelligence-engine'].outputs.commit_id }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  write-manifest-manual:
+    needs: deploy-manual
+    if: github.event_name == 'workflow_dispatch' && needs['deploy-manual'].result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/manifest-write
+        with:
+          service: ${{ inputs.service }}
+          environment: ${{ inputs.environment }}
+          digest: ${{ needs['deploy-manual'].outputs.digest }}
+          commit_id: ${{ needs['deploy-manual'].outputs.commit_id }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

@@ -4,7 +4,9 @@ name: _deploy-core
 #
 # JFrog is the source of truth for built images: dev builds once and publishes there; qa/prod only ever pull by digest from JFrog, never from another environment's ECR, using the digest recorded in deploy/<service>/<env>-image.json.
 #
-# Each job commits its own manifest straight onto its own branch — the upstream environment's normal, human-merged promotion PR (dev -> qa, qa -> main) carries it forward, so the downstream job just reads it off its own branch.
+# Doesn't write the manifest itself — just exposes digest/commit_id as outputs. deploy.yml's write-manifests job
+# reads these back (across all three services' calls to this workflow) and writes every changed service's
+# manifest in one place, once per push, instead of racing N independent writes against each other.
 
 on:
   workflow_call:
@@ -35,11 +37,16 @@ on:
         required: false
         type: string
         default: ""
+    outputs:
+      digest:
+        description: "Digest actually deployed for this service/environment. Blank if this call's stage didn't run or (for qa) wasn't approved."
+        value: ${{ jobs.dev.outputs.digest || jobs['qa-promote'].outputs.digest || jobs.prod.outputs.digest }}
+      commit_id:
+        description: "Commit/tag identifier matching the digest above."
+        value: ${{ jobs.dev.outputs.commit_id || jobs['qa-promote'].outputs.commit_id || jobs.prod.outputs.commit_id }}
 
-# contents: write is for manifest-write's commits.
 permissions:
   id-token: write
-  contents: write
 
 jobs:
   dev:
@@ -53,6 +60,7 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
     outputs:
       digest: ${{ steps.digest.outputs.ref }}
+      commit_id: ${{ github.sha }}
 
     steps:
       - uses: actions/checkout@v4
@@ -134,27 +142,6 @@ jobs:
           image_uri: ${{ steps.image.outputs.ecr_uri }}
           timeout_minutes: ${{ inputs.timeout_minutes }}
           changed_services: ${{ inputs.changed_services }}
-
-  # Its own job (not a step in dev, above) so a concurrency group can serialize it: two services changing in the
-  # same push both reach this point around the same time, and without serializing, whichever commits+pushes to
-  # dev second gets rejected as non-fast-forward. Same pattern infra.yml already uses.
-  dev-manifest:
-    needs: dev
-    if: inputs.environment == 'dev' && needs.dev.result == 'success'
-    runs-on: ubuntu-latest
-    concurrency:
-      group: manifest-write-dev
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-
-      # Commits straight onto dev; dev -> qa's promotion PR carries it forward for qa-deploy to read.
-      - uses: ./.github/actions/manifest-write
-        with:
-          service: ${{ inputs.service }}
-          environment: dev
-          digest: ${{ needs.dev.outputs.digest }}
-          commit_id: ${{ github.sha }}
 
   qa-deploy:
     if: inputs.environment == 'qa'
@@ -244,6 +231,11 @@ jobs:
     environment: qa
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+    outputs:
+      # Re-exported (not read directly from qa-deploy by callers) so this workflow's own digest/commit_id output
+      # stays blank until qa-promote itself — the human-approval-gated job — actually completes, not just qa-deploy.
+      digest: ${{ needs['qa-deploy'].outputs.digest }}
+      commit_id: ${{ needs['qa-deploy'].outputs.tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -262,26 +254,6 @@ jobs:
           docker tag "${CANDIDATE_URI}" "${VERIFIED_URI}"
           docker push "${VERIFIED_URI}"
 
-  # Own job, same reason as dev-manifest — serializes concurrent manifest commits from multiple services
-  # promoted in the same batch instead of racing their git pushes.
-  qa-promote-manifest:
-    needs: [qa-deploy, qa-promote]
-    if: inputs.environment == 'qa' && needs['qa-promote'].result == 'success'
-    runs-on: ubuntu-latest
-    concurrency:
-      group: manifest-write-qa
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-
-      # Commits straight onto qa; qa -> main's promotion PR carries it forward for prod to read.
-      - uses: ./.github/actions/manifest-write
-        with:
-          service: ${{ inputs.service }}
-          environment: qa
-          digest: ${{ needs['qa-deploy'].outputs.digest }}
-          commit_id: ${{ needs['qa-deploy'].outputs.tag }}
-
   prod:
     if: inputs.environment == 'prod'
     runs-on: ubuntu-latest
@@ -290,7 +262,7 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
     outputs:
       digest: ${{ steps.manifest.outputs.digest }}
-      tag: ${{ steps.manifest.outputs.tag }}
+      commit_id: ${{ steps.manifest.outputs.tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -333,22 +305,3 @@ jobs:
           image_uri: ${{ steps.image.outputs.uri }}
           timeout_minutes: ${{ inputs.timeout_minutes }}
           changed_services: ${{ inputs.changed_services }}
-
-  # Own job, same reason as dev-manifest/qa-promote-manifest — serializes concurrent manifest commits instead
-  # of racing their git pushes. Nothing downstream reads prod's manifest — this is an audit record only.
-  prod-manifest:
-    needs: prod
-    if: inputs.environment == 'prod' && needs.prod.result == 'success'
-    runs-on: ubuntu-latest
-    concurrency:
-      group: manifest-write-prod
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/manifest-write
-        with:
-          service: ${{ inputs.service }}
-          environment: prod
-          digest: ${{ needs.prod.outputs.digest }}
-          commit_id: ${{ needs.prod.outputs.tag }}
