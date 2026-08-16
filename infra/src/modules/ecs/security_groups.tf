@@ -19,10 +19,9 @@ resource "aws_security_group" "service" {
     Name = "${local.name_prefix[each.key]}-service-sg"
   })
 
-  # An org SCP blocks logs:UntagResource-style tag removal even for the CI role — Terraform otherwise tries to
-  # strip out-of-band governance tags (c7n-*) it doesn't know about, which the SCP then rejects outright.
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
-    ignore_changes = [tags_all]
+    ignore_changes = [tags, tags_all]
   }
 }
 
