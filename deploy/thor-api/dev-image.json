@@ -1,7 +1,7 @@
 {
   "service": "thor-api",
   "environment": "dev",
-  "digest": "",
-  "commitId": "",
-  "deployedAt": ""
+  "digest": "trialc6mgth.jfrog.io/docker-container-image/thor-api@sha256:609f4d94ccc842d142235ed1bac359f22f8bdf00853f71f881064c74ec579899",
+  "commitId": "2356acf64e718d8cda0b045940fa2ffca7c52013",
+  "deployedAt": "2026-08-16T16:23:53Z"
 }
