@@ -1,10 +1,9 @@
 name: Deploy
 
-# Entry point — decides environment/mode/which service(s) changed, then calls _deploy-core.yml. Replaces backend.yml + backend-dispatch.yml.
-#
-# push to dev -> deploy (build from source); push to qa/main -> promote (reads the manifest your own dev->qa / qa->main promotion PR carried over); pull_request -> preview only, via deploy-preview.yml; workflow_dispatch -> manual deploy/rollback.
-#
-# dorny/paths-filter decides which service(s) changed: source filters on push to dev, manifest filters (deploy/<service>/<env>-image.json) on push to qa/main.
+# Entry point — decides environment/mode/which service(s) changed, then calls _deploy-core.yml.
+# push to dev -> deploy (build from source); push to qa/main -> promote (reads the manifest carried by the
+# dev->qa / qa->main promotion PR); pull_request -> preview only, via deploy-preview.yml; workflow_dispatch ->
+# manual deploy/rollback. dorny/paths-filter picks source filters on push to dev, manifest filters on push to qa/main.
 
 on:
   push:
@@ -51,8 +50,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # base defaults to main when ref != base, so push to dev/qa would diff against main instead of their own
-      # previous commit — set to the branch itself to fix that; left blank on pull_request, whose default (the PR's base branch) is already correct.
+      # base defaults to main on push, which would diff dev/qa against main instead of their own last commit — force
+      # it to the branch itself; left blank on pull_request, where the default (PR's base branch) is already correct.
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -122,8 +121,7 @@ jobs:
           echo "task-api=$TASK_API" >> "$GITHUB_OUTPUT"
           echo "intelligence-engine=$INTELLIGENCE_ENGINE" >> "$GITHUB_OUTPUT"
 
-          # Every service getting its own deploy-<service> job this run — tells ecs-deploy which siblings NOT
-          # to sync, since those already have their own job deploying them for real.
+          # Services getting their own deploy-<service> job this run — tells ecs-deploy which siblings to skip syncing.
           CHANGED=""
           [ "$THOR_API" = "true" ] && CHANGED="${CHANGED}thor-api,"
           [ "$TASK_API" = "true" ] && CHANGED="${CHANGED}task-api,"
@@ -197,17 +195,15 @@ jobs:
       image_digest: ${{ inputs.image_digest }}
     secrets: inherit
 
-  # _deploy-core.yml only exposes digest/commit_id as outputs now — actually writing the manifest happens here,
-  # once per push, instead of once per service, so N services changing at once never race each other's writes.
-  # always(): deploy-<service> jobs that were skipped (their service didn't change) aren't "success", so the
-  # default needs: gate would otherwise skip this job too whenever fewer than all three services changed.
+  # Manifest writes happen once per push here, not once per service in _deploy-core.yml, so concurrent services
+  # never race each other's writes. always(): a skipped deploy-<service> job isn't "success", so without this the
+  # default needs: gate would skip this job too whenever fewer than all three services changed.
   write-manifests:
     needs: [context, deploy-thor-api, deploy-task-api, deploy-intelligence-engine]
     if: always() && needs.context.result == 'success' && needs.context.outputs.mode != 'preview'
     runs-on: ubuntu-latest
     steps:
-      # Needed even though manifest-write's own logic doesn't touch git — uses: ./local/path still needs the
-      # repo physically present in the workspace to resolve the action at all.
+      # uses: ./local/path still needs the repo checked out to resolve the action, even though manifest-write itself doesn't touch git.
       - uses: actions/checkout@v4
 
       - name: Write thor-api's manifest

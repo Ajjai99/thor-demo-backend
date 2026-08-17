@@ -1,12 +1,10 @@
 name: _deploy-core
 
-# Reusable workflow for all three environments — replaces backend-dispatch.yml + backend-dev.yml + backend-qa.yml + backend-prod.yml. Called only by deploy.yml.
-#
-# JFrog is the source of truth for built images: dev builds once and publishes there; qa/prod only ever pull by digest from JFrog, never from another environment's ECR, using the digest recorded in deploy/<service>/<env>-image.json.
-#
-# Doesn't write the manifest itself — just exposes digest/commit_id as outputs. deploy.yml's write-manifests job
-# reads these back (across all three services' calls to this workflow) and writes every changed service's
-# manifest in one place, once per push, instead of racing N independent writes against each other.
+# Reusable workflow for all three environments. Called only by deploy.yml.
+# JFrog is the source of truth for built images: dev builds once and publishes there; qa/prod only ever pull by
+# digest from JFrog, never from another environment's ECR, using the digest recorded in deploy/<service>/<env>-image.json.
+# Doesn't write the manifest itself — just exposes digest/commit_id as outputs; deploy.yml's write-manifests job
+# writes every changed service's manifest in one place, once per push, so concurrent writes never race.
 
 on:
   workflow_call:
@@ -74,14 +72,14 @@ jobs:
       - uses: ./.github/actions/jfrog-login
         id: jfrog
         with:
-          jfrog_url: ${{ vars.JFROG_URL }}
+          jfrog_hostname: ${{ vars.JFROG_HOSTNAME }}
           jfrog_username: ${{ vars.JFROG_USERNAME }}
           jfrog_access_token: ${{ secrets.JFROG_ACCESS_TOKEN }}
 
       - name: Set image URIs
         id: image
         run: |
-          echo "jfrog_uri=${{ steps.jfrog.outputs.registry }}/${{ vars.DOCKER_REPOSITORY }}/${{ inputs.service }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "jfrog_uri=${{ steps.jfrog.outputs.registry }}/${{ vars.JFROG_DOCKER_REPOSITORY }}/${{ inputs.service }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
           echo "ecr_uri=${{ steps.ecr.outputs.registry }}/${{ inputs.service }}-dev:${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore & build (.NET)
@@ -165,7 +163,7 @@ jobs:
       - uses: ./.github/actions/jfrog-login
         id: jfrog
         with:
-          jfrog_url: ${{ vars.JFROG_URL }}
+          jfrog_hostname: ${{ vars.JFROG_HOSTNAME }}
           jfrog_username: ${{ vars.JFROG_USERNAME }}
           jfrog_access_token: ${{ secrets.JFROG_ACCESS_TOKEN }}
 
@@ -232,8 +230,7 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
     outputs:
-      # Re-exported (not read directly from qa-deploy by callers) so this workflow's own digest/commit_id output
-      # stays blank until qa-promote itself — the human-approval-gated job — actually completes, not just qa-deploy.
+      # Re-exported so this workflow's own output stays blank until qa-promote (the approval-gated job) completes, not just qa-deploy.
       digest: ${{ needs['qa-deploy'].outputs.digest }}
       commit_id: ${{ needs['qa-deploy'].outputs.tag }}
 
