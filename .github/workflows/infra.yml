@@ -1,14 +1,8 @@
 name: Infra
 
 # Reviews and applies Terraform/Terragrunt changes for dev, qa, prod.
-#
-# PR: read-only checks (init, validate+lint, plan), nothing changes.
-# Push: same checks, then applies — auto for dev, after approval for qa/prod.
-# Both triggers exist so a merge (which fires both events) only applies once, via the push side.
-#
-# AWS roles are repo-level vars (DEV/QA/PROD_AWS_ROLE_ARN), picked by environment. init/validate/plan are ungated (read-only); apply-terragrunt and seed-ecr-placeholder run under real dev/qa/prod GitHub Environments, shared with backend deploy — only qa/prod require review.
-#
-# One file, not split up, since each run only ever targets one environment.
+# PR: read-only checks. Push: same checks, then applies — auto for dev, approval-gated for qa/prod via GitHub
+# Environments shared with backend deploy. Both triggers fire on a merge; only the push side applies.
 
 on:
   pull_request:
@@ -19,18 +13,17 @@ on:
     branches: [dev, qa, main]
     paths: ["infra/**", "backend/functions/**"]
 
-# DOTNET_VERSION: SDK version for root.hcl's before_hook (dotnet publish), one place.
-# TF_TOKEN_...: non-interactive auth for the JFrog remote state backend — CI's equivalent of `terraform login`. Needed by every job running a terragrunt command.
-# TF_BACKEND_REPOSITORY / JFROG_HOSTNAME: read by root.hcl's repo_name / jfrog_hostname via get_env(). Fallback
-# baked in here, not left to get_env()'s own default — an unset vars.* resolves to an empty string, not an
-# absent var, and get_env() returns that empty string literally rather than falling back (confirmed via a real
-# terragrunt render). Changing JFROG_HOSTNAME to a real different value also means updating the TF_TOKEN_...
-# line below to match — that name is mechanically derived from the hostname, not automatic (see setup guide).
+# JFROG_HOSTNAME / JFROG_STATE_BACKEND_REPOSITORY: required by root.hcl's get_env() (no fallback — fails loud if
+# unset). TF_TOKEN_...: Terraform's own login for that backend; name is mechanically derived from JFROG_HOSTNAME.
+# JFROG_ACCESS_TOKEN / JFROG_LAMBDA_ARTIFACTS_REPOSITORY: used by publish-lambda-functions.sh's JFrog build cache
+# (plain curl, unrelated to the state backend above).
 env:
   DOTNET_VERSION: "10.0.100"
   TF_TOKEN_trialc6mgth_jfrog_io: ${{ secrets.JFROG_ACCESS_TOKEN }}
-  JFROG_HOSTNAME: ${{ vars.JFROG_HOSTNAME || 'trialc6mgth.jfrog.io' }}
-  TF_BACKEND_REPOSITORY: ${{ vars.TF_BACKEND_REPOSITORY || 'terraform-state-local' }}
+  JFROG_HOSTNAME: ${{ vars.JFROG_HOSTNAME }}
+  JFROG_STATE_BACKEND_REPOSITORY: ${{ vars.JFROG_STATE_BACKEND_REPOSITORY}}
+  JFROG_ACCESS_TOKEN: ${{ secrets.JFROG_ACCESS_TOKEN }}
+  JFROG_LAMBDA_ARTIFACTS_REPOSITORY: ${{ vars.JFROG_LAMBDA_ARTIFACTS_REPOSITORY }}
 
 # One run per branch at a time; never cancels mid-run to avoid a half-applied state.
 concurrency:

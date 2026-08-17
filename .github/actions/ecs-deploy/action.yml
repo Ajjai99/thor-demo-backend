@@ -1,5 +1,5 @@
 name: ECS deploy
-description: Registers a new task definition revision pointing at the given image, deploys it, and waits until the new revision is primary and healthy (not the full BLUE_GREEN bake/old-revision teardown). Also redeploys the other two of thor-api/task-api/intelligence-engine with their current image (no rebuild) at the same time, so all three deployments run concurrently instead of one after another — unless changed_services says a sibling has its own deploy job this run, in which case it's skipped to avoid two jobs targeting the same ECS service at once.
+description: Deploys a new task definition revision and waits until it's primary and healthy. Also redeploys sibling services concurrently, unless they have their own deploy job this run.
 
 inputs:
   environment:
@@ -23,8 +23,7 @@ outputs:
 runs:
   using: composite
   steps:
-    # deploy_and_wait runs as a background job (&) for the main service and both siblings, so all three deploys
-    # (and any BLUE_GREEN bake) run concurrently — async commands are exempt from bash -e, so only `wait` needs its own error handling.
+    # deploy_and_wait runs as a background job (&) for the main service and both siblings, so all three run concurrently.
     - id: deploy
       shell: bash
       run: |
@@ -42,8 +41,7 @@ runs:
           local NEW_ARN
           NEW_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
 
-          # BLUE_GREEN rejects update-service with no --load-balancers at all — AWS requires the full config
-          # re-passed on every update. Re-reads what's currently on the service and passes it straight back; services with none get an empty array and the flag is skipped.
+          # BLUE_GREEN requires the full load-balancer config re-passed on every update — re-read what's current and pass it straight back.
           local LOAD_BALANCERS
           LOAD_BALANCERS=$(aws ecs describe-services \
             --cluster "thor-${{ inputs.environment }}" \
@@ -66,9 +64,7 @@ runs:
           fi
 
           # Polled manually — aws ecs wait services-stable's fixed ~10min timeout can't cover a full BLUE_GREEN bake.
-          # Succeeds as soon as OUR new revision is primary and healthy — doesn't wait for the old revision's
-          # bake/teardown to finish, since cutover already happened by this point (bake is just AWS's own
-          # post-cutover monitoring window, with no CloudWatch alarms wired in to actually act on it today).
+          # Succeeds once our new revision is primary and healthy; doesn't wait for old-revision bake/teardown.
           local TIMEOUT_SECONDS=$(( ${{ inputs.timeout_minutes }} * 60 ))
           local INTERVAL=15
           local ELAPSED=0
@@ -142,10 +138,8 @@ runs:
 
         start_deploy "${{ inputs.service }}" "${{ inputs.image_uri }}"
 
-        # When several services change in one push, each gets its own deploy job — only the first of them (fixed
-        # thor-api/task-api/intelligence-engine order) also syncs whichever services stayed the same, so no two jobs
-        # ever target the same ECS service at once. Blank changed_services (single-service runs, manual dispatch)
-        # always syncs both siblings, same as before.
+        # When several services change, only the first (fixed thor-api/task-api/intelligence-engine order) syncs the
+        # unchanged siblings, so no two jobs target the same service. Blank changed_services always syncs both.
         PRIMARY=""
         for S in thor-api task-api intelligence-engine; do
           case ",${{ inputs.changed_services }}," in

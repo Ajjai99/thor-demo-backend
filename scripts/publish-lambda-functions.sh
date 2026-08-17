@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Publishes every backend/functions/<Name>/src/*.csproj into its own publish/ dir, since Terraform can only zip
 # existing files, not compile C#. Run by infra/root.hcl's before_hook on every terragrunt plan/apply/destroy.
-# Skips a function's build if the hash of its src/ + global.json matches the hash from the last build — local-only,
-# since a fresh CI checkout never has a prior hash to compare against. Excludes src/bin, src/obj from the hash
-# (dotnet rewrites them on every publish, which would make the hash change even with unchanged source). The hash
-# marker lives next to publish/, not inside it, so it doesn't get zipped into the deployed Lambda package.
+# Skips a function's build if the hash of its src/ + global.json is unchanged since the last build (local, via
+# .publish-hash) — a fresh CI checkout never has that, so in CI a miss falls through to a per-function JFrog cache
+# (JFROG_LAMBDA_ARTIFACTS_REPOSITORY, keyed by <function>/<hash>.tar.gz) before rebuilding with dotnet.
+# Excludes src/bin, src/obj from the hash (dotnet rewrites them on every publish). Hash marker lives next to
+# publish/, not inside it, so it doesn't get zipped into the deployed Lambda package.
 
 set -euo pipefail
 
@@ -28,6 +29,56 @@ compute_build_hash() {
     find "$src_dir" -type f -not -path '*/bin/*' -not -path '*/obj/*' -print0
     [ -f "$global_json" ] && printf '%s\0' "$global_json" || true
   } | sort -z | xargs -0 "${HASH_CMD[@]}" | "${HASH_CMD[@]}" | cut -d' ' -f1
+}
+
+JFROG_CACHE_ENABLED=false
+if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${JFROG_HOSTNAME:-}" ] && [ -n "${JFROG_LAMBDA_ARTIFACTS_REPOSITORY:-}" ] && [ -n "${JFROG_ACCESS_TOKEN:-}" ]; then
+  JFROG_CACHE_ENABLED=true
+fi
+
+jfrog_cache_url() {
+  local function_name="$1"
+  local hash="$2"
+  echo "https://${JFROG_HOSTNAME}/artifactory/${JFROG_LAMBDA_ARTIFACTS_REPOSITORY}/${function_name}/${hash}.tar.gz"
+}
+
+# Restores publish_dir from JFrog on a real cache hit (exit 0); leaves publish_dir untouched on a miss (exit 1).
+try_restore_from_jfrog() {
+  local function_name="$1"
+  local hash="$2"
+  local publish_dir="$3"
+  local url tmp_tar
+  url="$(jfrog_cache_url "$function_name" "$hash")"
+  tmp_tar="$(mktemp)"
+
+  if curl -sf -H "Authorization: Bearer ${JFROG_ACCESS_TOKEN}" -o "$tmp_tar" "$url"; then
+    rm -rf "$publish_dir"
+    mkdir -p "$publish_dir"
+    tar -xzf "$tmp_tar" -C "$publish_dir"
+    rm -f "$tmp_tar"
+    return 0
+  fi
+
+  rm -f "$tmp_tar"
+  return 1
+}
+
+# Best-effort — a failed upload just means the next run rebuilds this function too, not a broken deploy.
+upload_to_jfrog() {
+  local function_name="$1"
+  local hash="$2"
+  local publish_dir="$3"
+  local url tmp_tar
+  url="$(jfrog_cache_url "$function_name" "$hash")"
+  tmp_tar="$(mktemp)"
+
+  tar -czf "$tmp_tar" -C "$publish_dir" .
+  if curl -sf -X PUT -H "Authorization: Bearer ${JFROG_ACCESS_TOKEN}" -T "$tmp_tar" "$url" >/dev/null; then
+    echo "  cached ${function_name} build (${hash:0:12}) to JFrog."
+  else
+    echo "  warning: failed to upload ${function_name}'s build cache to JFrog — continuing anyway." >&2
+  fi
+  rm -f "$tmp_tar"
 }
 
 if [ ! -d "$FUNCTIONS_DIR" ]; then
@@ -55,13 +106,28 @@ for csproj in "$FUNCTIONS_DIR"/*/src/*.csproj; do
   current_hash="$(compute_build_hash "$src_dir" "${function_dir}/global.json")"
 
   if [ -d "$publish_dir" ] && [ -f "$hash_file" ] && [ "$current_hash" = "$(cat "$hash_file")" ]; then
-    echo "  skipping ${function_name} — src/ unchanged since last publish."
+    echo "  skipping ${function_name} — src/ unchanged since last publish (local check)."
     continue
+  fi
+
+  if [ "$JFROG_CACHE_ENABLED" = "true" ]; then
+    echo "  checking JFrog cache for ${function_name} (${current_hash:0:12})..."
+    if try_restore_from_jfrog "$function_name" "$current_hash" "$publish_dir"; then
+      echo "$current_hash" > "$hash_file"
+      echo "  restored ${function_name} from JFrog cache — skipped dotnet publish."
+      continue
+    fi
+    echo "  no JFrog cache hit for ${function_name} — publishing fresh."
   fi
 
   echo "  publishing ${function_name} -> ${publish_dir}"
   dotnet publish "$csproj" -c Release -o "$publish_dir"
   echo "$current_hash" > "$hash_file"
+
+  if [ "$JFROG_CACHE_ENABLED" = "true" ]; then
+    upload_to_jfrog "$function_name" "$current_hash" "$publish_dir"
+  fi
+
   echo "  published ${function_name}."
 done
 

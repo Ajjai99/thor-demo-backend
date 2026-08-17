@@ -89,6 +89,19 @@ would locally, but non-interactively:
    env var's name must match the backend's `hostname` (dots become
    underscores); if `root.hcl`'s `jfrog_hostname` ever changes, this env
    var name has to change with it.
+4. `root.hcl`'s `jfrog_hostname`/`repo_name` locals read `JFROG_HOSTNAME`/
+   `JFROG_STATE_BACKEND_REPOSITORY` via `get_env()` with **no fallback
+   default** — both are required, or every `terragrunt` command (plan,
+   apply, init, validate, destroy) fails immediately at the locals-eval
+   step with `EnvVarNotFoundError`. In CI, `infra.yml`'s workflow-level
+   `env` already supplies both from the repo-level `JFROG_HOSTNAME` /
+   `JFROG_STATE_BACKEND_REPOSITORY` variables (**Repo → Settings →
+   Secrets and variables → Actions → Variables**). For **local** runs,
+   export them yourself first:
+   ```
+   export JFROG_HOSTNAME=trialc6mgth.jfrog.io
+   export JFROG_STATE_BACKEND_REPOSITORY=terraform-state-local
+   ```
 
 ## Step 3: Create the OIDC identity provider (AWS Console)
 

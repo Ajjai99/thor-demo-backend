@@ -1,14 +1,7 @@
 name: _deploy-preview
 
-# PR-preview check for qa and main: neither environment builds from source
-# (they promote an already-built image — see _deploy-core.yml's qa-deploy/prod jobs),
-# so there's no image to build or scan here. This just confirms the code in
-# the PR still compiles and its unit tests still pass — the same restore/
-# build/test steps _deploy-core.yml's dev job runs for real, minus everything Docker-
-# or AWS-related, since a PR into qa/main hasn't been promoted anywhere yet.
-#
-# No `environment:`, no OIDC permissions, no AWS credentials — nothing here
-# needs them.
+# PR-preview check for qa and main: they promote an already-built image (see _deploy-core.yml's qa-deploy/prod
+# jobs), so this just confirms the code still compiles and unit tests pass — no Docker/AWS involved.
 
 on:
   workflow_call:
@@ -33,8 +26,7 @@ jobs:
           dotnet restore
           dotnet build --no-restore -c Release
 
-      # continue-on-error: fast feedback, not a gate — matches
-      # _deploy-core.yml's dev job's own unit-test steps.
+      # continue-on-error: fast feedback, not a gate.
       - name: Run unit tests (.NET)
         if: inputs.service != 'intelligence-engine'
         continue-on-error: true
