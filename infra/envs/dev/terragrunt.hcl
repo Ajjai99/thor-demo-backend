@@ -102,8 +102,7 @@ inputs = {
       certificates = {}
     }
 
-    # The shared zone every tenant's certificate (below) is validated inside — must be named "tenant_zone" to match.
-    tenant_zone = {
+    thor = {
       zone_name = "dev.cndemo.com"
       certificates = {
         frontend = {
@@ -116,20 +115,10 @@ inputs = {
     }
   }
 
-  # One cert per tenant, each validated inside hosted_zones.tenant_zone (dev.cndemo.com) above — e.g. tenant_a ->
-  # tenant-a.dev.cndemo.com. Adding a tenant here is the only step needed to create its record + certificate.
-  tenants = {
-    tenant_a = {
-      domain_name = "tenant-a.dev.cndemo.com"
-    }
-    tenant_b = {
-      domain_name = "tenant-b.dev.cndemo.com"
-    }
-  }
-
   # --- frontend (static SPA: S3 + CloudFront) ---
-  enable_frontend      = true
-  frontend_price_class = "PriceClass_100"
+  enable_frontend          = true
+  frontend_price_class     = "PriceClass_100"
+  frontend_certificate_key = "thor/frontend"
 
   # --- database (Aurora PostgreSQL, task-api's) ---
   # Low capacity + no deletion protection — dev is throwaway, cost-optimized.

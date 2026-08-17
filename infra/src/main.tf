@@ -86,24 +86,13 @@ locals {
   # "<zone_key>/<cert_key>" so short, repeated cert names (e.g. "api" in two
   # different zones) never collide once flattened. zone_name rides along on
   # each entry so the zone_id lookup below knows which zone to resolve.
-  hosted_zone_certificates_flat = merge([
+  route53_certificates_flat = merge([
     for zone_key, zone in var.hosted_zones : {
       for cert_key, cert in zone.certificates : "${zone_key}/${cert_key}" => merge(cert, {
         zone_name = zone.zone_name
       })
     }
   ]...)
-
-  # var.tenants are certificates only (no zone of their own) — every tenant is validated inside hosted_zones'
-  # "tenant_zone" entry (the shared per-tenant zone, e.g. dev.cndemo.com). Blank domain_name = unconfigured placeholder, excluded.
-  tenant_certificates_flat = {
-    for tenant_key, tenant in var.tenants : "tenants/${tenant_key}" => merge(tenant, {
-      zone_name = var.hosted_zones["tenant_zone"].zone_name
-    })
-    if tenant.domain_name != ""
-  }
-
-  route53_certificates_flat = merge(local.hosted_zone_certificates_flat, local.tenant_certificates_flat)
 }
 
 
@@ -130,6 +119,17 @@ module "acm" {
   tags = var.tags
 }
 
+locals {
+  # "" until enable_route53 is on and frontend_certificate_key actually
+  # points at an entry — keeps module.frontend's domain_name/etc. defaulted
+  # to "" (its own "no custom domain" fallback) rather than erroring.
+  frontend_route53 = var.enable_route53 && var.frontend_certificate_key != "" ? {
+    domain_name     = local.route53_certificates_flat[var.frontend_certificate_key].domain_name
+    certificate_arn = module.acm[0].certificate_arns[var.frontend_certificate_key]
+    zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.frontend_certificate_key].zone_name]
+  } : null
+}
+
 # Private S3 + CloudFront for the frontend SPA.
 module "frontend" {
   count = var.enable_frontend ? 1 : 0
@@ -138,6 +138,10 @@ module "frontend" {
 
   environment = var.environment
   price_class = var.frontend_price_class
+
+  domain_name         = local.frontend_route53 != null ? local.frontend_route53.domain_name : ""
+  acm_certificate_arn = local.frontend_route53 != null ? local.frontend_route53.certificate_arn : ""
+  zone_id             = local.frontend_route53 != null ? local.frontend_route53.zone_id : ""
 
   tags = var.tags
 }

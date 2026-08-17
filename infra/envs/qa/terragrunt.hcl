@@ -108,8 +108,9 @@ inputs = {
   }
 
   # --- frontend (static SPA: S3 + CloudFront) ---
-  enable_frontend      = true
-  frontend_price_class = "PriceClass_100"
+  enable_frontend          = true
+  frontend_price_class     = "PriceClass_100"
+  frontend_certificate_key = "thor/frontend"
 
   # --- database (Aurora PostgreSQL, task-api's) ---
   aurora_database_name         = "thor_qa_db"
