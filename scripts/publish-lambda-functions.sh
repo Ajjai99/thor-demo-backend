@@ -54,9 +54,12 @@ try_restore_from_jfrog() {
   if curl -sf -H "Authorization: Bearer ${JFROG_ACCESS_TOKEN}" -o "$tmp_tar" "$url"; then
     rm -rf "$publish_dir"
     mkdir -p "$publish_dir"
-    tar -xzf "$tmp_tar" -C "$publish_dir"
-    rm -f "$tmp_tar"
-    return 0
+    if tar -xzf "$tmp_tar" -C "$publish_dir" 2>/dev/null; then
+      rm -f "$tmp_tar"
+      return 0
+    fi
+    echo "  warning: downloaded JFrog cache archive for ${function_name} is corrupt — treating as a cache miss." >&2
+    rm -rf "$publish_dir"
   fi
 
   rm -f "$tmp_tar"
@@ -72,8 +75,7 @@ upload_to_jfrog() {
   url="$(jfrog_cache_url "$function_name" "$hash")"
   tmp_tar="$(mktemp)"
 
-  tar -czf "$tmp_tar" -C "$publish_dir" .
-  if curl -sf -X PUT -H "Authorization: Bearer ${JFROG_ACCESS_TOKEN}" -T "$tmp_tar" "$url" >/dev/null; then
+  if tar -czf "$tmp_tar" -C "$publish_dir" . && curl -sf -X PUT -H "Authorization: Bearer ${JFROG_ACCESS_TOKEN}" -T "$tmp_tar" "$url" >/dev/null; then
     echo "  cached ${function_name} build (${hash:0:12}) to JFrog."
   else
     echo "  warning: failed to upload ${function_name}'s build cache to JFrog — continuing anyway." >&2
