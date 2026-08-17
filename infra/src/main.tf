@@ -86,19 +86,27 @@ locals {
   # "<zone_key>/<cert_key>" so short, repeated cert names (e.g. "api" in two
   # different zones) never collide once flattened. zone_name rides along on
   # each entry so the zone_id lookup below knows which zone to resolve.
-  route53_certificates_flat = merge([
+  hosted_zone_certificates_flat = merge([
     for zone_key, zone in var.hosted_zones : {
       for cert_key, cert in zone.certificates : "${zone_key}/${cert_key}" => merge(cert, {
         zone_name = zone.zone_name
       })
     }
   ]...)
+
+  # var.tenants are certificates only (no zone of their own) — every tenant is validated inside hosted_zones'
+  # "tenant_zone" entry (the shared per-tenant zone, e.g. dev.cndemo.com). Blank domain_name = unconfigured placeholder, excluded.
+  tenant_certificates_flat = {
+    for tenant_key, tenant in var.tenants : "tenants/${tenant_key}" => merge(tenant, {
+      zone_name = var.hosted_zones["tenant_zone"].zone_name
+    })
+    if tenant.domain_name != ""
+  }
+
+  route53_certificates_flat = merge(local.hosted_zone_certificates_flat, local.tenant_certificates_flat)
 }
 
-# Hosted zones — dynamically created/looked-up from var.hosted_zones, no
-# module code changes needed to add another one (see this env's
-# terragrunt.hcl). Off by default until domain names are confirmed and any
-# delegation records they need are actually in place.
+
 module "route53" {
   count = var.enable_route53 ? 1 : 0
 
@@ -108,14 +116,6 @@ module "route53" {
   tags  = var.tags
 }
 
-# ACM certificates (us-east-1, required for CloudFront) + DNS validation.
-# Each certificate's zone_id is resolved here from module.route53's
-# zone_ids output via zone_name, so terragrunt.hcl only ever needs to know a
-# zone's domain name, never a real AWS zone ID. The alias records that
-# actually point a hostname at its CloudFront distribution live inside
-# modules/frontend and modules/api_cdn instead of here — both need a
-# certificate from this module, and the alias needs their distribution's
-# domain name, so creating it here would be a module cycle.
 module "acm" {
   count = var.enable_route53 ? 1 : 0
 

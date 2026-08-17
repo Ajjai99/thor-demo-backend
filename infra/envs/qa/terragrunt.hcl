@@ -99,8 +99,8 @@ inputs = {
 
       certificates = {
         frontend = {
-          domain_name                = "qa.sphereboard.ai"
-          subject_alternative_names  = ["api.qa.sphereboard.ai"]
+          domain_name               = "qa.sphereboard.ai"
+          subject_alternative_names = ["api.qa.sphereboard.ai"]
         }
       }
     }
