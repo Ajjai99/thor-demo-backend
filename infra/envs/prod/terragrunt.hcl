@@ -74,6 +74,13 @@ inputs = {
     }
   }
 
+  # --- route53 + acm (hosted zones with their certificates nested) ---
+  # Prod's domain is a fully separate decision from dev/qa's sphereboard.ai —
+  # still unconfirmed, so left empty rather than guessed. See
+  # project_thor_domain memory.
+  enable_route53 = false
+  hosted_zones   = {}
+
   # --- frontend (static SPA: S3 + CloudFront) ---
   enable_frontend      = true
   frontend_price_class = "PriceClass_100"

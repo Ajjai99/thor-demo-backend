@@ -70,6 +70,21 @@ output "task_role_arns" {
   value       = module.ecs.task_role_arns
 }
 
+output "route53_zone_ids" {
+  description = "Map of zone name -> hosted zone ID, for every zone in hosted_zones"
+  value       = var.enable_route53 ? module.route53[0].zone_ids : null
+}
+
+output "route53_name_servers" {
+  description = "Map of zone name -> its 4 name servers, for zones this created. Hand the relevant entry to whoever owns that zone's parent domain (e.g. SPHERE IT for dev.sphereboard.ai) to add as an NS delegation record."
+  value       = var.enable_route53 ? module.route53[0].name_servers : null
+}
+
+output "route53_certificate_arns" {
+  description = "Map of certificate logical name (\"<zone_key>/<cert_key>\" from hosted_zones) -> validated ARN"
+  value       = var.enable_route53 ? module.acm[0].certificate_arns : null
+}
+
 output "frontend_bucket_name" {
   description = "S3 bucket the frontend deploy pipeline syncs to — set as thor-demo-frontend's S3_BUCKET_NAME GitHub Environment variable"
   value       = var.enable_frontend ? module.frontend[0].bucket_name : null

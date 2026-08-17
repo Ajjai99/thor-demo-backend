@@ -88,6 +88,25 @@ inputs = {
     }
   }
 
+  # --- route53 + acm (hosted zones with their certificates nested) ---
+  # Off until the domain is confirmed and SPHERE IT has added the delegation
+  # NS record for qa.sphereboard.ai — see project_thor_domain memory. Values
+  # below are the working assumption, not final.
+  enable_route53 = false
+
+  hosted_zones = {
+    thor = {
+      zone_name = "qa.sphereboard.ai"
+
+      certificates = {
+        frontend = {
+          domain_name                = "qa.sphereboard.ai"
+          subject_alternative_names  = ["api.qa.sphereboard.ai"]
+        }
+      }
+    }
+  }
+
   # --- frontend (static SPA: S3 + CloudFront) ---
   enable_frontend      = true
   frontend_price_class = "PriceClass_100"
