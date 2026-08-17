@@ -169,6 +169,12 @@ variable "frontend_certificate_key" {
   default     = ""
 }
 
+variable "api_gateway_certificate_key" {
+  type        = string
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/api_gateway\") the API's custom domain + cert come from. \"\" (default) leaves the API reachable only via its default execute-api URL, no custom domain mapping created."
+  default     = ""
+}
+
 # --- api gateway authorizer (Lambda, validates connector API keys against Aurora) ---
 
 variable "enable_authorizer" {

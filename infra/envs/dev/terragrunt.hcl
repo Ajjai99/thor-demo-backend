@@ -120,6 +120,9 @@ inputs = {
   frontend_price_class     = "PriceClass_100"
   frontend_certificate_key = "thor/frontend"
 
+  # --- api gateway custom domain ---
+  api_gateway_certificate_key = "thor/api_gateway"
+
   # --- database (Aurora PostgreSQL, task-api's) ---
   # Low capacity + no deletion protection — dev is throwaway, cost-optimized.
   aurora_database_name         = "thor_dev_db"

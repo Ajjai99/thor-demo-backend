@@ -128,6 +128,13 @@ locals {
     certificate_arn = module.acm[0].certificate_arns[var.frontend_certificate_key]
     zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.frontend_certificate_key].zone_name]
   } : null
+
+  # Same pattern as frontend_route53 above, for api_gateway's custom domain mapping.
+  api_gateway_route53 = var.enable_route53 && var.api_gateway_certificate_key != "" ? {
+    domain_name     = local.route53_certificates_flat[var.api_gateway_certificate_key].domain_name
+    certificate_arn = module.acm[0].certificate_arns[var.api_gateway_certificate_key]
+    zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.api_gateway_certificate_key].zone_name]
+  } : null
 }
 
 # Private S3 + CloudFront for the frontend SPA.
@@ -161,6 +168,10 @@ module "api_gateway" {
   enable_authorizer               = var.enable_authorizer
   authorizer_lambda_invoke_arn    = var.enable_authorizer ? module.lambda[0].lambda_invoke_arn : ""
   authorizer_lambda_function_name = var.enable_authorizer ? module.lambda[0].lambda_function_name : ""
+
+  domain_name         = local.api_gateway_route53 != null ? local.api_gateway_route53.domain_name : ""
+  acm_certificate_arn = local.api_gateway_route53 != null ? local.api_gateway_route53.certificate_arn : ""
+  zone_id             = local.api_gateway_route53 != null ? local.api_gateway_route53.zone_id : ""
 
   tags = var.tags
 }
