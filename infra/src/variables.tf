@@ -149,15 +149,6 @@ variable "hosted_zones" {
   default = {}
 }
 
-variable "tenants" {
-  description = "One ACM certificate per tenant, all validated inside the single shared zone named \"tenant_zone\" in hosted_zones (e.g. \"dev.cndemo.com\") — adding a tenant here creates its DNS validation record + certificate with no other changes needed. Keyed by tenant name (e.g. \"tenant_a\" -> a cert for tenant-a.dev.cndemo.com). A tenant with domain_name left blank (\"\") is a reserved-but-unconfigured placeholder and is skipped entirely."
-  type = map(object({
-    domain_name               = optional(string, "")
-    subject_alternative_names = optional(list(string), [])
-  }))
-  default = {}
-}
-
 # --- frontend (static SPA: S3 + CloudFront) ---
 
 variable "enable_frontend" {
@@ -170,6 +161,12 @@ variable "frontend_price_class" {
   type        = string
   description = "CloudFront price class for the frontend distribution"
   default     = "PriceClass_100"
+}
+
+variable "frontend_certificate_key" {
+  type        = string
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/frontend\") the frontend distribution's custom domain + cert come from. \"\" (default) leaves the frontend on CloudFront's default certificate, no alias record created."
+  default     = ""
 }
 
 # --- api gateway authorizer (Lambda, validates connector API keys against Aurora) ---
