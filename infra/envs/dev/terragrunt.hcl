@@ -98,21 +98,32 @@ inputs = {
     # delegation record (added manually below, same as SPHERE IT would for
     # real) has somewhere to live.
     apex = {
-      zone_name    = "varunsimha.com"
+      zone_name    = "cndemo.com" # Dev 
       certificates = {}
     }
 
-    thor = {
-      zone_name = "dev.varunsimha.com"
-
+    # The shared zone every tenant's certificate (below) is validated inside — must be named "tenant_zone" to match.
+    tenant_zone = {
+      zone_name = "dev.cndemo.com"
       certificates = {
         frontend = {
-          domain_name = "dev.varunsimha.com"
+          domain_name = "dev.cndemo.com"
         }
         api_gateway = {
-          domain_name = "api.dev.varunsimha.com"
+          domain_name = "api.dev.cndemo.com"
         }
       }
+    }
+  }
+
+  # One cert per tenant, each validated inside hosted_zones.tenant_zone (dev.cndemo.com) above — e.g. tenant_a ->
+  # tenant-a.dev.cndemo.com. Adding a tenant here is the only step needed to create its record + certificate.
+  tenants = {
+    tenant_a = {
+      domain_name = "tenant-a.dev.cndemo.com"
+    }
+    tenant_b = {
+      domain_name = "tenant-b.dev.cndemo.com"
     }
   }
 

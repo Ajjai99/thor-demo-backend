@@ -149,6 +149,15 @@ variable "hosted_zones" {
   default = {}
 }
 
+variable "tenants" {
+  description = "One ACM certificate per tenant, all validated inside the single shared zone named \"tenant_zone\" in hosted_zones (e.g. \"dev.cndemo.com\") — adding a tenant here creates its DNS validation record + certificate with no other changes needed. Keyed by tenant name (e.g. \"tenant_a\" -> a cert for tenant-a.dev.cndemo.com). A tenant with domain_name left blank (\"\") is a reserved-but-unconfigured placeholder and is skipped entirely."
+  type = map(object({
+    domain_name               = optional(string, "")
+    subject_alternative_names = optional(list(string), [])
+  }))
+  default = {}
+}
+
 # --- frontend (static SPA: S3 + CloudFront) ---
 
 variable "enable_frontend" {
