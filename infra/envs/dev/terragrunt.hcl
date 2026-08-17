@@ -74,6 +74,47 @@ inputs = {
     }
   }
 
+  # --- route53 + acm (hosted zones with their certificates nested) ---
+  # TEMPORARY test override: varunsimha.com is already registered in this
+  # account, so it's usable to prove the new generic route53/acm modules
+  # work end-to-end before sphereboard.ai is confirmed. Revert to the
+  # dev.sphereboard.ai / false values below once that's real — don't leave
+  # this pointed at varunsimha.com.
+  #   enable_route53 = false
+  #   hosted_zones = {
+  #     thor = {
+  #       zone_name = "dev.sphereboard.ai"
+  #       certificates = {
+  #         frontend    = { domain_name = "dev.sphereboard.ai" }
+  #         api_gateway = { domain_name = "api.dev.sphereboard.ai" }
+  #       }
+  #     }
+  #   }
+  enable_route53 = true
+
+  hosted_zones = {
+    # Apex zone — no certificates of its own, exists only so the "dev" NS
+    # delegation record (added manually below, same as SPHERE IT would for
+    # real) has somewhere to live.
+    apex = {
+      zone_name    = "varunsimha.com"
+      certificates = {}
+    }
+
+    thor = {
+      zone_name = "dev.varunsimha.com"
+
+      certificates = {
+        frontend = {
+          domain_name = "dev.varunsimha.com"
+        }
+        api_gateway = {
+          domain_name = "api.dev.varunsimha.com"
+        }
+      }
+    }
+  }
+
   # --- frontend (static SPA: S3 + CloudFront) ---
   enable_frontend      = true
   frontend_price_class = "PriceClass_100"

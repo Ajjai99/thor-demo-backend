@@ -29,7 +29,7 @@ data "aws_iam_policy_document" "secrets_access" {
   for_each = { for k, v in local.active_services : k => v if length(v.secrets) > 0 }
 
   statement {
-    actions = ["secretsmanager:GetSecretValue"]
+    actions   = ["secretsmanager:GetSecretValue"]
     resources = [var.aurora_secret_arn]
   }
 }

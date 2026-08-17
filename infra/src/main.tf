@@ -67,6 +67,69 @@ module "ecs" {
   tags = var.tags
 }
 
+locals {
+  # var.hosted_zones nests certificates under their zone for readability in
+  # terragrunt.hcl — modules/route53 and modules/acm both stay flat and
+  # generic, so this flattening happens here, once, at the boundary.
+
+  # zones map for modules/route53: keyed by the real domain name (zone_name),
+  # not hosted_zones' own logical keys.
+  route53_zones = {
+    for zone_key, zone in var.hosted_zones : zone.zone_name => {
+      create_zone = zone.create_zone
+      comment     = zone.comment
+      tags        = zone.tags
+    }
+  }
+
+  # Every certificate across every zone, flattened into one map. Keyed by
+  # "<zone_key>/<cert_key>" so short, repeated cert names (e.g. "api" in two
+  # different zones) never collide once flattened. zone_name rides along on
+  # each entry so the zone_id lookup below knows which zone to resolve.
+  route53_certificates_flat = merge([
+    for zone_key, zone in var.hosted_zones : {
+      for cert_key, cert in zone.certificates : "${zone_key}/${cert_key}" => merge(cert, {
+        zone_name = zone.zone_name
+      })
+    }
+  ]...)
+}
+
+# Hosted zones — dynamically created/looked-up from var.hosted_zones, no
+# module code changes needed to add another one (see this env's
+# terragrunt.hcl). Off by default until domain names are confirmed and any
+# delegation records they need are actually in place.
+module "route53" {
+  count = var.enable_route53 ? 1 : 0
+
+  source = "./modules/route53"
+
+  zones = local.route53_zones
+  tags  = var.tags
+}
+
+# ACM certificates (us-east-1, required for CloudFront) + DNS validation.
+# Each certificate's zone_id is resolved here from module.route53's
+# zone_ids output via zone_name, so terragrunt.hcl only ever needs to know a
+# zone's domain name, never a real AWS zone ID. The alias records that
+# actually point a hostname at its CloudFront distribution live inside
+# modules/frontend and modules/api_cdn instead of here — both need a
+# certificate from this module, and the alias needs their distribution's
+# domain name, so creating it here would be a module cycle.
+module "acm" {
+  count = var.enable_route53 ? 1 : 0
+
+  source = "./modules/acm"
+
+  certificates = {
+    for key, cert in local.route53_certificates_flat : key => merge(cert, {
+      zone_id = module.route53[0].zone_ids[cert.zone_name]
+    })
+  }
+
+  tags = var.tags
+}
+
 # Private S3 + CloudFront for the frontend SPA.
 module "frontend" {
   count = var.enable_frontend ? 1 : 0
