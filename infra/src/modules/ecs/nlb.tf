@@ -43,6 +43,56 @@ resource "aws_lb_target_group" "thor-nlb-tg-green" {
   tags = var.tags
 }
 
+# SGs attach to an NLB only at creation, so wiring this in forces a replace of aws_lb.thor-nlb below.
+resource "aws_security_group" "nlb" {
+  for_each = local.public_services
+
+  name        = "thor-nlb-${var.environment}-sg"
+  description = "Thor NLB — ingress scoped to the listener ports only; target security groups reference this instead of allowing the whole VPC CIDR"
+  vpc_id      = var.vpc_id
+
+  tags = merge(var.tags, {
+    Name = "thor-nlb-${var.environment}-sg"
+  })
+}
+
+resource "aws_vpc_security_group_ingress_rule" "nlb_from_vpc" {
+  for_each = local.public_services
+
+  security_group_id = aws_security_group.nlb[each.key].id
+  description       = "Production listener, from within the VPC"
+  from_port         = each.value.nlb_listener_port
+  to_port           = each.value.nlb_listener_port
+  ip_protocol       = "tcp"
+  cidr_ipv4         = var.vpc_cidr
+
+  tags = var.tags
+}
+
+resource "aws_vpc_security_group_ingress_rule" "nlb_test_from_vpc" {
+  for_each = local.public_services
+
+  security_group_id = aws_security_group.nlb[each.key].id
+  description       = "Blue/green test listener, from within the VPC"
+  from_port         = coalesce(each.value.nlb_test_listener_port, 8081)
+  to_port           = coalesce(each.value.nlb_test_listener_port, 8081)
+  ip_protocol       = "tcp"
+  cidr_ipv4         = var.vpc_cidr
+
+  tags = var.tags
+}
+
+resource "aws_vpc_security_group_egress_rule" "nlb_to_vpc" {
+  for_each = local.public_services
+
+  security_group_id = aws_security_group.nlb[each.key].id
+  description       = "To registered targets within the VPC"
+  ip_protocol       = "-1"
+  cidr_ipv4         = var.vpc_cidr
+
+  tags = var.tags
+}
+
 # Internal — reached via VPC Link from API Gateway, not directly from the internet. name is thor-nlb-<environment>,
 # not the shared name_prefix — deliberately different, since there's only ever one shared public NLB, not one
 # per service. Renaming an existing LB forces destroy+recreate (AWS names are immutable), applied deliberately.
@@ -53,6 +103,7 @@ resource "aws_lb" "thor-nlb" {
   load_balancer_type = "network"
   internal           = true
   subnets            = var.private_subnet_ids
+  security_groups    = [aws_security_group.nlb[each.key].id]
 
   tags = merge(var.tags, {
     Name = "thor-nlb-${var.environment}"
