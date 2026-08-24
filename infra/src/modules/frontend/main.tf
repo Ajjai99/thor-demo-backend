@@ -56,6 +56,7 @@ resource "aws_cloudfront_distribution" "thor-fe-cdn" {
   comment             = local.name_prefix
   default_root_object = "index.html"
   price_class         = var.price_class
+  web_acl_id          = aws_wafv2_web_acl.thor-fe-waf.arn
 
   origin {
     domain_name              = aws_s3_bucket.thor-fe-bucket.bucket_regional_domain_name
@@ -101,6 +102,11 @@ resource "aws_cloudfront_distribution" "thor-fe-cdn" {
   tags = merge(var.tags, {
     Name = local.name_prefix
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 data "aws_iam_policy_document" "cloudfront_access" {

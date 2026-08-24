@@ -1,5 +1,5 @@
 locals {
-  public_services = { for k, v in local.active_services : k => v if v.expose_publicly }
+  public_services = { for k, v in local.active_services : k => v if v.expose_via_nlb }
 }
 
 # Blue/primary target group. Green and the listener always exist too — toggling ROLLING/BLUE_GREEN shouldn't tear down the LB.
@@ -7,13 +7,13 @@ resource "aws_lb_target_group" "thor-nlb-tg-blue" {
   for_each = local.public_services
 
   name        = local.name_prefix[each.key]
-  port        = each.value.container_port
+  port        = local.sidecar_port[each.key]
   protocol    = "TCP"
   vpc_id      = var.vpc_id
   target_type = "ip"
 
   health_check {
-    protocol            = "HTTP"
+    protocol            = "HTTPS"
     path                = each.value.health_check_path
     healthy_threshold   = 3
     unhealthy_threshold = 3
@@ -27,13 +27,13 @@ resource "aws_lb_target_group" "thor-nlb-tg-green" {
   for_each = local.public_services
 
   name        = "${local.name_prefix[each.key]}-green"
-  port        = each.value.container_port
+  port        = local.sidecar_port[each.key]
   protocol    = "TCP"
   vpc_id      = var.vpc_id
   target_type = "ip"
 
   health_check {
-    protocol            = "HTTP"
+    protocol            = "HTTPS"
     path                = each.value.health_check_path
     healthy_threshold   = 3
     unhealthy_threshold = 3
@@ -48,12 +48,17 @@ resource "aws_security_group" "nlb" {
   for_each = local.public_services
 
   name        = "thor-nlb-${var.environment}-sg"
-  description = "Thor NLB — ingress scoped to the listener ports only; target security groups reference this instead of allowing the whole VPC CIDR"
+  description = "Thor NLB - ingress scoped to the listener ports only; target security groups reference this instead of allowing the whole VPC CIDR"
   vpc_id      = var.vpc_id
 
   tags = merge(var.tags, {
     Name = "thor-nlb-${var.environment}-sg"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nlb_from_vpc" {
@@ -74,8 +79,8 @@ resource "aws_vpc_security_group_ingress_rule" "nlb_test_from_vpc" {
 
   security_group_id = aws_security_group.nlb[each.key].id
   description       = "Blue/green test listener, from within the VPC"
-  from_port         = coalesce(each.value.nlb_test_listener_port, 8081)
-  to_port           = coalesce(each.value.nlb_test_listener_port, 8081)
+  from_port         = coalesce(each.value.nlb_test_listener_port, 8082)
+  to_port           = coalesce(each.value.nlb_test_listener_port, 8082)
   ip_protocol       = "tcp"
   cidr_ipv4         = var.vpc_cidr
 
@@ -143,7 +148,7 @@ resource "aws_lb_listener" "thor-nlb-test-listener" {
   for_each = local.public_services
 
   load_balancer_arn = aws_lb.thor-nlb[each.key].arn
-  port              = coalesce(each.value.nlb_test_listener_port, 8081)
+  port              = coalesce(each.value.nlb_test_listener_port, 8082)
   protocol          = "TCP"
 
   default_action {

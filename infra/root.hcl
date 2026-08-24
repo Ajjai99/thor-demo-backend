@@ -52,6 +52,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    acme = {
+      source  = "vancluever/acme"
+      version = "~> 2.0"
+    }
   }
 }
 
@@ -67,11 +71,22 @@ provider "aws" {
     }
   }
 }
+
+# server_url stays a literal Terraform variable reference (not a Terragrunt-resolved value) so it can keep
+# varying per environment via each env's terragrunt.hcl inputs, same as aws's region above does not.
+provider "acme" {
+  server_url = var.acme_server_url
+}
 EOF
 }
 
 inputs = {
   environment = local.environment
+
+  # Terragrunt only copies infra/src into .terragrunt-cache, so a Terraform-side file() call can't reach
+  # repo-root scripts/ — read here instead, where get_repo_root() still points at the real checkout, and pass
+  # the content through as a plain string input.
+  tls_sidecar_entrypoint_script = file("${get_repo_root()}/scripts/tls-sidecar-entrypoint.sh")
 }
 
 # dotnet publish before plan/apply/destroy, so archive_file has real code to zip. Skippable via SKIP_LAMBDA_PUBLISH=true — used by CI's apply job, which already has the zip and doesn't need a rebuild.

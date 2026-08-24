@@ -76,23 +76,24 @@ variable "enable_compute" {
 }
 
 variable "services" {
-  description = "Per-service configuration for the shared ECS cluster, keyed by service name. Must define thor-api, task-api, and intelligence-engine, with thor-api the only one setting expose_publicly = true (a private NLB reached via VPC Link from API Gateway, not the internet directly — no ALB). deployment_strategy=BLUE_GREEN is a per-deploy toggle (reserved for DB-schema-change deploys per deployment_strategy_plan.md), not a fixed per-service default."
+  description = "Per-service configuration for the shared ECS cluster, keyed by service name. Must define thor-api, task-api, and intelligence-engine, with thor-api the only one setting expose_via_nlb = true (a private NLB reached via VPC Link from API Gateway, not the internet directly — no ALB). deployment_strategy=BLUE_GREEN is a per-deploy toggle (reserved for DB-schema-change deploys per deployment_strategy_plan.md), not a fixed per-service default."
   type = map(object({
-    container_image       = string
-    container_port        = number
-    cpu                   = number
-    memory                = number
-    desired_count         = number
-    min_healthy_percent   = number
-    max_percent           = number
-    health_check_path     = string
-    log_retention_days    = number
-    environment_variables = map(string)
-    secrets               = map(string)
-    expose_publicly       = bool
-    nlb_listener_port     = optional(number)
-    deployment_strategy   = string
-    bake_time_in_minutes  = number
+    container_image        = string
+    container_port         = number
+    cpu                    = number
+    memory                 = number
+    desired_count          = number
+    min_healthy_percent    = number
+    max_percent            = number
+    health_check_path      = string
+    log_retention_days     = number
+    environment_variables  = map(string)
+    secrets                = map(string)
+    expose_via_nlb         = bool
+    nlb_listener_port      = optional(number)
+    nlb_test_listener_port = optional(number, 8082)
+    deployment_strategy    = string
+    bake_time_in_minutes   = number
   }))
 
   validation {
@@ -101,8 +102,8 @@ variable "services" {
   }
 
   validation {
-    condition     = contains(keys(var.services), "thor-api") ? var.services["thor-api"].expose_publicly == true : true
-    error_message = "var.services.thor-api.expose_publicly must be true — thor-api is the only internet-facing service; task-api and intelligence-engine must stay internal."
+    condition     = contains(keys(var.services), "thor-api") ? var.services["thor-api"].expose_via_nlb == true : true
+    error_message = "var.services.thor-api.expose_via_nlb must be true — thor-api is the only internet-facing service; task-api and intelligence-engine must stay internal."
   }
 
   validation {
@@ -115,6 +116,23 @@ variable "enable_container_insights" {
   type        = bool
   description = "Enable ECS Container Insights on the cluster"
   default     = true
+}
+
+variable "tls_sidecar_entrypoint_script" {
+  type        = string
+  description = "Contents of scripts/tls-sidecar-entrypoint.sh — read by root.hcl (outside Terragrunt's infra/src copy boundary) and passed in as a string, since the ecs module can't reach repo-root files with file()."
+}
+
+# --- TLS sidecar certificate (tls_certificate.tf, Let's Encrypt via Route53 DNS-01) ---
+
+variable "acme_root_domain" {
+  type        = string
+  description = "Registered domain with a Route 53 public hosted zone in this account, used for the sidecar cert's DNS-01 challenge. The cert's hostname is \"<service>-<environment>.<this domain>\", e.g. thor-api-dev.cndemo.com."
+}
+
+variable "acme_server_url" {
+  type        = string
+  description = "ACME directory URL. Use Let's Encrypt's staging endpoint (https://acme-staging-v02.api.letsencrypt.org/directory) until the flow is confirmed working — staging certs aren't publicly trusted, so API Gateway's tls_config will still reject them, but staging avoids burning the real production issuance rate limit while testing. Switch to https://acme-v02.api.letsencrypt.org/directory once verified."
 }
 
 variable "tags" {

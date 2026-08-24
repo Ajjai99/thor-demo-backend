@@ -24,7 +24,10 @@ inputs = {
   # container_image = "" falls back to that service's own ECR repo at the "latest" tag; set it explicitly to pin a specific tag.
   services = {
     thor-api = {
-      container_image        = ""
+      # Pinned to a real, existing tag — this repo's ECR has no "latest", so container_image = "" (its normal
+      # fallback) would reference an image that doesn't exist. Needed for this apply since task_definition is
+      # temporarily un-ignored on the ECS service (see services.tf) and would otherwise push a broken revision.
+      container_image        = "877969058937.dkr.ecr.us-east-1.amazonaws.com/thor-api-dev:eb9c39f998a0d3f6c0b4dce994b493a233f34744"
       container_port         = 8080
       cpu                    = 512  # 0.5 vCPU
       memory                 = 1024 # 1 GB
@@ -35,9 +38,9 @@ inputs = {
       log_retention_days     = 30
       environment_variables  = {}
       secrets                = {}
-      expose_publicly        = true
-      nlb_listener_port      = 80
-      nlb_test_listener_port = 8081
+      expose_via_nlb         = true
+      nlb_listener_port      = 443
+      nlb_test_listener_port = 8082
       deployment_strategy    = "BLUE_GREEN"
       bake_time_in_minutes   = 10
     }
@@ -53,7 +56,7 @@ inputs = {
       log_retention_days    = 30
       environment_variables = {}
       secrets               = {}
-      expose_publicly       = false
+      expose_via_nlb        = false
       deployment_strategy   = "BLUE_GREEN"
       bake_time_in_minutes  = 10
     }
@@ -69,7 +72,7 @@ inputs = {
       log_retention_days    = 30
       environment_variables = {}
       secrets               = {}
-      expose_publicly       = false
+      expose_via_nlb        = false
       deployment_strategy   = "BLUE_GREEN"
       bake_time_in_minutes  = 10
     }
@@ -95,6 +98,13 @@ inputs = {
 
   # --- api gateway authorizer ---
   enable_authorizer = true
+
+  # --- tls sidecar certificate (Let's Encrypt via Route53 DNS-01) ---
+  # cndemo.com's hosted zone lives in this same AWS account. Staging endpoint until the flow is confirmed
+  # working end-to-end — staging certs aren't publicly trusted either, so this alone won't pass API Gateway's
+  # tls_config yet, but it proves the DNS-01/issuance mechanics without touching Let's Encrypt's real rate limit.
+  acme_root_domain = "cndemo.com"
+  acme_server_url  = "https://acme-staging-v02.api.letsencrypt.org/directory"
 
   # --- lambda authorizer ---
   authorizer_lambda_runtime     = "dotnet10"

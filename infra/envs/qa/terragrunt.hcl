@@ -48,9 +48,9 @@ inputs = {
       log_retention_days     = 30
       environment_variables  = {}
       secrets                = {}
-      expose_publicly        = true
-      nlb_listener_port      = 80
-      nlb_test_listener_port = 8081
+      expose_via_nlb         = true
+      nlb_listener_port      = 443
+      nlb_test_listener_port = 8082
       deployment_strategy    = "ROLLING"
       bake_time_in_minutes   = 5
     }
@@ -66,7 +66,7 @@ inputs = {
       log_retention_days    = 30
       environment_variables = {}
       secrets               = {}
-      expose_publicly       = false
+      expose_via_nlb        = false
       deployment_strategy   = "ROLLING"
       bake_time_in_minutes  = 5
     }
@@ -82,7 +82,7 @@ inputs = {
       log_retention_days    = 30
       environment_variables = {}
       secrets               = {}
-      expose_publicly       = false
+      expose_via_nlb        = false
       deployment_strategy   = "ROLLING"
       bake_time_in_minutes  = 5
     }
@@ -107,6 +107,11 @@ inputs = {
 
   # --- api gateway authorizer ---
   enable_authorizer = true
+
+  # --- tls sidecar certificate (Let's Encrypt via Route53 DNS-01) ---
+  # Staging endpoint — same reasoning as dev, not yet validated end-to-end in any environment.
+  acme_root_domain = "cndemo.com"
+  acme_server_url  = "https://acme-staging-v02.api.letsencrypt.org/directory"
 
   # --- lambda authorizer ---
   authorizer_lambda_runtime     = "dotnet10"
