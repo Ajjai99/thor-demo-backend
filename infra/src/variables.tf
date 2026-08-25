@@ -5,16 +5,9 @@ variable "environment" {
 
 # --- network ---
 
-variable "enable_network" {
-  type        = bool
-  description = "Whether to create this environment's own VPC. Set false to borrow dev's VPC instead (see dev_* variables) and skip that VPC's endpoint/NAT costs entirely."
-  default     = true
-}
-
 variable "vpc_cidr" {
   type        = string
-  description = "CIDR block for the VPC. Unused when enable_network is false."
-  default     = ""
+  description = "CIDR block for the VPC"
 }
 
 variable "az_count" {
@@ -25,46 +18,18 @@ variable "az_count" {
 
 variable "public_subnet_cidrs" {
   type        = list(string)
-  description = "CIDR blocks for public subnets, one per AZ. Unused when enable_network is false."
-  default     = []
+  description = "CIDR blocks for public subnets, one per AZ"
 }
 
 variable "private_subnet_cidrs" {
   type        = list(string)
-  description = "CIDR blocks for private subnets, one per AZ. Unused when enable_network is false."
-  default     = []
+  description = "CIDR blocks for private subnets, one per AZ"
 }
 
 variable "enable_vpc_endpoints" {
   type        = bool
   description = "Create gateway/interface VPC endpoints instead of NAT Gateway egress"
   default     = true
-}
-
-# --- dev's network (used only when enable_network = false) ---
-
-variable "dev_vpc_id" {
-  type        = string
-  description = "dev's VPC ID, to deploy compute into when this environment doesn't create its own (passed in via a Terragrunt dependency block)"
-  default     = null
-}
-
-variable "dev_vpc_cidr" {
-  type        = string
-  description = "CIDR of dev's VPC — scopes the compute security group's egress"
-  default     = null
-}
-
-variable "dev_public_subnet_ids" {
-  type        = list(string)
-  description = "dev's public subnet IDs, for the ALB"
-  default     = []
-}
-
-variable "dev_private_subnet_ids" {
-  type        = list(string)
-  description = "dev's private subnet IDs, for the ECS tasks"
-  default     = []
 }
 
 # --- compute (shared ECS cluster running thor-api, task-api, intelligence-engine) ---
@@ -118,27 +83,36 @@ variable "enable_container_insights" {
   default     = true
 }
 
-variable "tls_sidecar_entrypoint_script" {
-  type        = string
-  description = "Contents of scripts/tls-sidecar-entrypoint.sh — read by root.hcl (outside Terragrunt's infra/src copy boundary) and passed in as a string, since the ecs module can't reach repo-root files with file()."
-}
-
-# --- TLS sidecar certificate (tls_certificate.tf, Let's Encrypt via Route53 DNS-01) ---
-
-variable "acme_root_domain" {
-  type        = string
-  description = "Registered domain with a Route 53 public hosted zone in this account, used for the sidecar cert's DNS-01 challenge. The cert's hostname is \"<service>-<environment>.<this domain>\", e.g. thor-api-dev.cndemo.com."
-}
-
-variable "acme_server_url" {
-  type        = string
-  description = "ACME directory URL. Use Let's Encrypt's staging endpoint (https://acme-staging-v02.api.letsencrypt.org/directory) until the flow is confirmed working — staging certs aren't publicly trusted, so API Gateway's tls_config will still reject them, but staging avoids burning the real production issuance rate limit while testing. Switch to https://acme-v02.api.letsencrypt.org/directory once verified."
-}
-
 variable "tags" {
   type        = map(string)
   description = "Additional resource-specific tags"
   default     = {}
+}
+
+# --- route53 + acm (dynamic hosted zones and certificates) ---
+# Off by default until domain names are confirmed and any delegation they
+# need (e.g. SPHERE IT adding an NS record for a subdomain) is actually in
+# place.
+
+variable "enable_route53" {
+  type        = bool
+  description = "Whether to create this env's hosted zones + ACM certificates. Leave false until domain names are confirmed and delegated."
+  default     = false
+}
+
+variable "hosted_zones" {
+  description = "Hosted zones and their ACM certificates, nested together for readability. Keyed by an arbitrary logical name (not the domain itself — that's zone_name). Each zone's certificates map is in turn keyed by its own arbitrary logical name, scoped to that zone, so short names like \"api\" can repeat across different zones without colliding. Flattened into modules/route53 + modules/acm's flat shapes inside main.tf — this nesting is purely a root-level ergonomic choice, not something either module needs to know about. Unused while enable_route53 is false."
+  type = map(object({
+    zone_name   = string
+    create_zone = optional(bool, true)
+    comment     = optional(string, "")
+    tags        = optional(map(string), {})
+    certificates = map(object({
+      domain_name               = string
+      subject_alternative_names = optional(list(string), [])
+    }))
+  }))
+  default = {}
 }
 
 # --- frontend (static SPA: S3 + CloudFront) ---
@@ -155,13 +129,25 @@ variable "frontend_price_class" {
   default     = "PriceClass_100"
 }
 
-# --- api gateway authorizer (Lambda, validates connector API keys against Aurora) ---
-
-variable "enable_authorizer" {
-  type        = bool
-  description = "Locks the API Gateway proxy behind the Lambda API-key authorizer instead of leaving it open (authorization = NONE). Off by default until real authorizer code and seeded API keys exist."
-  default     = false
+variable "frontend_certificate_key" {
+  type        = string
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/frontend\") the frontend distribution's custom domain + cert come from. \"\" (default) leaves the frontend on CloudFront's default certificate, no alias record created."
+  default     = ""
 }
+
+variable "api_gateway_certificate_key" {
+  type        = string
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/api_gateway\") the API's custom domain + cert come from. \"\" (default) leaves the API reachable only via its default execute-api URL, no custom domain mapping created."
+  default     = ""
+}
+
+variable "backend_certificate_key" {
+  type        = string
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/backend\") the NLB's TLS listener cert comes from, for NLB <-> ECS re-encryption. \"\" (default) leaves the NLB on plain TCP and the app on plain HTTP:8080, today's behavior — set only where the re-encryption path is actually wanted (dev only for now)."
+  default     = ""
+}
+
+# --- api gateway authorizer (Lambda, validates connector API keys against Aurora) ---
 
 variable "authorizer_lambda_runtime" {
   type        = string
@@ -235,14 +221,6 @@ variable "aurora_skip_final_snapshot" {
   type        = bool
   default     = true
   description = "Should be false for prod, true for throwaway dev/qa environments"
-}
-
-# --- rds proxy (module.rds_proxy, connection pooling in front of Aurora) ---
-
-variable "enable_rds_proxy" {
-  type        = bool
-  description = "Whether to create the RDS Proxy in front of Aurora"
-  default     = false
 }
 
 # Future modules' variables go here.

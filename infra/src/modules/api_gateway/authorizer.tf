@@ -1,7 +1,5 @@
 # REQUEST-type authorizer for the x-api-key header. payload_format_version 1.0 keeps it compatible with Thor.Authorizer's IAM-policy response.
 resource "aws_apigatewayv2_authorizer" "thor-api-key" {
-  count = var.enable_authorizer ? 1 : 0
-
   api_id                            = aws_apigatewayv2_api.thor-apigw-api.id
   name                              = "${var.service_name}-${var.environment}-authorizer"
   authorizer_type                   = "REQUEST"
@@ -13,11 +11,9 @@ resource "aws_apigatewayv2_authorizer" "thor-api-key" {
 
 # Grants API Gateway permission to invoke the authorizer Lambda.
 resource "aws_lambda_permission" "authorizer_invoke" {
-  count = var.enable_authorizer ? 1 : 0
-
   statement_id  = "AllowAPIGatewayInvokeAuthorizer"
   action        = "lambda:InvokeFunction"
   function_name = var.authorizer_lambda_function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.thor-apigw-api.execution_arn}/authorizers/${aws_apigatewayv2_authorizer.thor-api-key[0].id}"
+  source_arn    = "${aws_apigatewayv2_api.thor-apigw-api.execution_arn}/authorizers/${aws_apigatewayv2_authorizer.thor-api-key.id}"
 }

@@ -1,5 +1,10 @@
 locals {
   public_services = { for k, v in local.active_services : k => v if v.expose_via_nlb }
+
+  # TLS re-encryption to the container (self-signed cert there, see tls-related env vars in
+  # services.tf) only when a real cert is provided for the NLB's own listener — "" (default,
+  # qa/prod today) keeps everything on plain TCP/HTTP, today's behavior.
+  nlb_tls_enabled = var.nlb_certificate_arn != ""
 }
 
 # Blue/primary target group. Green and the listener always exist too — toggling ROLLING/BLUE_GREEN shouldn't tear down the LB.
@@ -7,14 +12,16 @@ resource "aws_lb_target_group" "thor-nlb-tg-blue" {
   for_each = local.public_services
 
   name        = local.name_prefix[each.key]
-  port        = local.sidecar_port[each.key]
-  protocol    = "TCP"
+  port        = each.value.container_port
+  protocol    = local.nlb_tls_enabled ? "TLS" : "TCP"
   vpc_id      = var.vpc_id
   target_type = "ip"
 
   health_check {
-    protocol            = "HTTPS"
-    path                = each.value.health_check_path
+    # TCP, not HTTP/HTTPS, when TLS is on — AWS's health checker must never attempt to validate
+    # the container's self-signed cert.
+    protocol            = local.nlb_tls_enabled ? "TCP" : "HTTP"
+    path                = local.nlb_tls_enabled ? null : each.value.health_check_path
     healthy_threshold   = 3
     unhealthy_threshold = 3
     interval            = 30
@@ -27,14 +34,14 @@ resource "aws_lb_target_group" "thor-nlb-tg-green" {
   for_each = local.public_services
 
   name        = "${local.name_prefix[each.key]}-green"
-  port        = local.sidecar_port[each.key]
-  protocol    = "TCP"
+  port        = each.value.container_port
+  protocol    = local.nlb_tls_enabled ? "TLS" : "TCP"
   vpc_id      = var.vpc_id
   target_type = "ip"
 
   health_check {
-    protocol            = "HTTPS"
-    path                = each.value.health_check_path
+    protocol            = local.nlb_tls_enabled ? "TCP" : "HTTP"
+    path                = local.nlb_tls_enabled ? null : each.value.health_check_path
     healthy_threshold   = 3
     unhealthy_threshold = 3
     interval            = 30
@@ -126,7 +133,9 @@ resource "aws_lb_listener" "thor-nlb-listener" {
 
   load_balancer_arn = aws_lb.thor-nlb[each.key].arn
   port              = each.value.nlb_listener_port
-  protocol          = "TCP"
+  protocol          = local.nlb_tls_enabled ? "TLS" : "TCP"
+  certificate_arn   = local.nlb_tls_enabled ? var.nlb_certificate_arn : null
+  ssl_policy        = local.nlb_tls_enabled ? "ELBSecurityPolicy-TLS13-1-2-2021-06" : null
 
   default_action {
     type             = "forward"
@@ -149,7 +158,9 @@ resource "aws_lb_listener" "thor-nlb-test-listener" {
 
   load_balancer_arn = aws_lb.thor-nlb[each.key].arn
   port              = coalesce(each.value.nlb_test_listener_port, 8082)
-  protocol          = "TCP"
+  protocol          = local.nlb_tls_enabled ? "TLS" : "TCP"
+  certificate_arn   = local.nlb_tls_enabled ? var.nlb_certificate_arn : null
+  ssl_policy        = local.nlb_tls_enabled ? "ELBSecurityPolicy-TLS13-1-2-2021-06" : null
 
   default_action {
     type             = "forward"

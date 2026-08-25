@@ -10,13 +10,14 @@ resource "aws_apigatewayv2_integration" "proxy" {
   integration_uri        = var.nlb_listener_arn
   payload_format_version = "1.0"
 
-  # NLB stays TCP passthrough — this is what tells API Gateway to speak TLS to whatever's actually listening on
-  # the other end (the sidecar, always present — see ecs module's tls_sidecar.tf). The sidecar's cert is issued by
-  # Let's Encrypt (infra/src/tls_certificate.tf) specifically because it must chain to a public CA — HTTP API's
-  # tls_config has no override for a private/self-signed cert (confirmed: insecureSkipVerification doesn't exist
-  # for HTTP API integrations at all, only REST APIs).
-  tls_config {
-    server_name_to_verify = var.tls_server_name
+  # Plain HTTP end to end (var.tls_server_name == "") unless the NLB actually presents a real
+  # cert — must agree with the NLB's own TLS state (modules/ecs/nlb.tf's nlb_tls_enabled), not
+  # decided independently here.
+  dynamic "tls_config" {
+    for_each = var.tls_server_name != "" ? [1] : []
+    content {
+      server_name_to_verify = var.tls_server_name
+    }
   }
 }
 
@@ -25,8 +26,8 @@ resource "aws_apigatewayv2_route" "proxy_root_get" {
   route_key = "GET /"
   target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
 
-  authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"
-  authorizer_id      = var.enable_authorizer ? aws_apigatewayv2_authorizer.thor-api-key[0].id : null
+  authorization_type = "CUSTOM"
+  authorizer_id      = aws_apigatewayv2_authorizer.thor-api-key.id
 }
 
 resource "aws_apigatewayv2_route" "proxy_root_post" {
@@ -34,8 +35,8 @@ resource "aws_apigatewayv2_route" "proxy_root_post" {
   route_key = "POST /"
   target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
 
-  authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"
-  authorizer_id      = var.enable_authorizer ? aws_apigatewayv2_authorizer.thor-api-key[0].id : null
+  authorization_type = "CUSTOM"
+  authorizer_id      = aws_apigatewayv2_authorizer.thor-api-key.id
 }
 
 resource "aws_apigatewayv2_route" "proxy_get" {
@@ -43,8 +44,8 @@ resource "aws_apigatewayv2_route" "proxy_get" {
   route_key = "GET /{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
 
-  authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"
-  authorizer_id      = var.enable_authorizer ? aws_apigatewayv2_authorizer.thor-api-key[0].id : null
+  authorization_type = "CUSTOM"
+  authorizer_id      = aws_apigatewayv2_authorizer.thor-api-key.id
 }
 
 resource "aws_apigatewayv2_route" "proxy_post" {
@@ -52,6 +53,6 @@ resource "aws_apigatewayv2_route" "proxy_post" {
   route_key = "POST /{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
 
-  authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"
-  authorizer_id      = var.enable_authorizer ? aws_apigatewayv2_authorizer.thor-api-key[0].id : null
+  authorization_type = "CUSTOM"
+  authorizer_id      = aws_apigatewayv2_authorizer.thor-api-key.id
 }

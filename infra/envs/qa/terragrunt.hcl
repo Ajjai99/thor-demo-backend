@@ -6,29 +6,15 @@ terraform {
   source = "../../src"
 }
 
-
-dependency "dev" {
-  config_path = "../dev"
-
-  mock_outputs = {
-    vpc_id             = "vpc-mock00000000"
-    vpc_cidr           = "10.255.255.0/24"
-    public_subnet_ids  = ["subnet-mockpub1", "subnet-mockpub2"]
-    private_subnet_ids = ["subnet-mockpriv1", "subnet-mockpriv2"]
-  }
-  mock_outputs_allowed_terraform_commands = ["plan", "validate"]
-}
-
 # Every value the root module accepts is spelled out below, same as envs/dev — only `environment` is left out, root.hcl supplies it.
 inputs = {
   # --- network ---
-  # qa borrows dev's VPC — vpc_cidr/subnet_cidrs below are unused while enable_network is false.
-  enable_network = false
-
-  dev_vpc_id             = dependency.dev.outputs.vpc_id
-  dev_vpc_cidr           = dependency.dev.outputs.vpc_cidr
-  dev_public_subnet_ids  = dependency.dev.outputs.public_subnet_ids
-  dev_private_subnet_ids = dependency.dev.outputs.private_subnet_ids
+  # qa's own VPC — 10.1.0.0/16 to stay non-overlapping with dev's 10.0.0.0/16 (same AWS account).
+  vpc_cidr             = "10.1.0.0/16"
+  az_count             = 2
+  public_subnet_cidrs  = ["10.1.0.0/24", "10.1.1.0/24"]
+  private_subnet_cidrs = ["10.1.10.0/24", "10.1.11.0/24"]
+  enable_vpc_endpoints = true
 
   # --- ecs compute ---
   enable_compute            = false
@@ -37,8 +23,9 @@ inputs = {
   # container_image = "" falls back to that service's own ECR repo at the "latest" tag; set it explicitly to pin a specific tag.
   services = {
     thor-api = {
-      container_image        = ""
-      container_port         = 8080
+      container_image = ""
+      # 443, thor-api terminates the NLB's re-encrypted TLS session itself (self-signed cert, see Program.cs).
+      container_port         = 443
       cpu                    = 512
       memory                 = 1024
       desired_count          = 2
@@ -88,9 +75,48 @@ inputs = {
     }
   }
 
+  # --- route53 + acm (hosted zones with their certificates nested) ---
+  # Off until dev's apply has actually created cndemo.com's zone — apex
+  # below is a lookup (create_zone = false), not a create, so it 404s until
+  # then. Turn this on once that's confirmed live.
+  enable_route53 = false
+
+  hosted_zones = {
+    # Same apex zone dev creates — looked up here, not created, so this
+    # doesn't fight dev over who owns cndemo.com.
+    apex = {
+      zone_name    = "cndemo.com"
+      create_zone  = false
+      certificates = {}
+    }
+
+    thor = {
+      zone_name = "qa.cndemo.com"
+      certificates = {
+        frontend = {
+          domain_name = "qa.cndemo.com"
+        }
+        api_gateway = {
+          domain_name = "api.qa.cndemo.com"
+        }
+        # NLB's TLS listener cert (re-encryption) — CN/SNI only, no DNS record needed.
+        backend = {
+          domain_name = "backend.qa.cndemo.com"
+        }
+      }
+    }
+  }
+
   # --- frontend (static SPA: S3 + CloudFront) ---
-  enable_frontend      = true
-  frontend_price_class = "PriceClass_100"
+  enable_frontend          = true
+  frontend_price_class     = "PriceClass_100"
+  frontend_certificate_key = "thor/frontend"
+
+  # --- api gateway custom domain ---
+  api_gateway_certificate_key = "thor/api_gateway"
+
+  # --- nlb <-> ecs TLS re-encryption ---
+  backend_certificate_key = "thor/backend"
 
   # --- database (Aurora PostgreSQL, task-api's) ---
   aurora_database_name         = "thor_qa_db"
@@ -101,17 +127,6 @@ inputs = {
   aurora_backup_retention_days = 7
   aurora_deletion_protection   = true
   aurora_skip_final_snapshot   = true
-
-  # --- rds proxy ---
-  enable_rds_proxy = true
-
-  # --- api gateway authorizer ---
-  enable_authorizer = true
-
-  # --- tls sidecar certificate (Let's Encrypt via Route53 DNS-01) ---
-  # Staging endpoint — same reasoning as dev, not yet validated end-to-end in any environment.
-  acme_root_domain = "cndemo.com"
-  acme_server_url  = "https://acme-staging-v02.api.letsencrypt.org/directory"
 
   # --- lambda authorizer ---
   authorizer_lambda_runtime     = "dotnet10"

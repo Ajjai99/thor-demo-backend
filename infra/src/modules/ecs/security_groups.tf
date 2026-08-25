@@ -33,9 +33,9 @@ resource "aws_vpc_security_group_ingress_rule" "public_from_vpc" {
   for_each = local.public_services
 
   security_group_id            = aws_security_group.service[each.key].id
-  description                  = "From the NLB, to the TLS sidecar"
-  from_port                    = local.sidecar_port[each.key]
-  to_port                      = local.sidecar_port[each.key]
+  description                  = "From the NLB, to the app"
+  from_port                    = each.value.container_port
+  to_port                      = each.value.container_port
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.nlb[each.key].id
 

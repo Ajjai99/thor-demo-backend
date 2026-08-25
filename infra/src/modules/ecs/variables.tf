@@ -24,29 +24,6 @@ variable "enable_container_insights" {
   default     = true
 }
 
-variable "tls_sidecar_entrypoint_script" {
-  type        = string
-  description = "Contents of scripts/tls-sidecar-entrypoint.sh, passed in as a string from root.hcl (see tls_sidecar.tf) rather than read locally with file() — Terragrunt only copies infra/src into .terragrunt-cache, so this module can't reach a repo-root file directly."
-}
-
-variable "tls_certificate_pem" {
-  type        = string
-  description = "The TLS sidecar's leaf certificate (PEM), issued by Let's Encrypt at the root module level (infra/src/tls_certificate.tf) — this module only stores it in Secrets Manager, it can't request it itself (provider configuration can't live in a child module)."
-  sensitive   = true
-}
-
-variable "tls_certificate_chain_pem" {
-  type        = string
-  description = "Let's Encrypt's intermediate certificate(s) (PEM) — concatenated with tls_certificate_pem by the sidecar entrypoint script into the full chain nginx serves. API Gateway needs this to build the path to a public root; a self-signed cert never had one."
-  sensitive   = true
-}
-
-variable "tls_private_key_pem" {
-  type        = string
-  description = "Private key (PEM) for tls_certificate_pem."
-  sensitive   = true
-}
-
 variable "enable_compute" {
   type        = bool
   description = "Whether to create the ECS services (task defs, ECS services, NLB/target groups, per-service IAM/SG) for local.active_services. The cluster, Service Connect namespace, and ECR repos (ecr.tf) are created regardless — set false to bring up an environment's cluster/registry only, before real images exist."
@@ -54,7 +31,7 @@ variable "enable_compute" {
 }
 
 variable "services" {
-  description = "Per-service configuration, keyed by service name (thor-api, task-api, intelligence-engine). expose_via_nlb=true gets a private NLB (nlb.tf, thor-api only) reached via VPC Link from API Gateway, not directly from the internet; services with expose_via_nlb=false accept traffic only from the public services' security groups, reachable internally via Service Connect using the map key as the client_alias dns_name. deployment_strategy=BLUE_GREEN is a per-deploy toggle (deployment_strategy_plan.md reserves it for DB-schema-change deploys) — for a publicly-exposed service it shifts the NLB's production listener between blue/green target groups; for an internal service it's a plain task-set swap. Every publicly-exposed service also gets an NGINX sidecar that terminates TLS on container_port and proxies to the app on an internal-only port (tls_sidecar.tf) — the NLB stays TCP passthrough, the app never sees TLS."
+  description = "Per-service configuration, keyed by service name (thor-api, task-api, intelligence-engine). expose_via_nlb=true gets a private NLB (nlb.tf, thor-api only) reached via VPC Link from API Gateway, not directly from the internet; services with expose_via_nlb=false accept traffic only from the public services' security groups, reachable internally via Service Connect using the map key as the client_alias dns_name. deployment_strategy=BLUE_GREEN is a per-deploy toggle (deployment_strategy_plan.md reserves it for DB-schema-change deploys) — for a publicly-exposed service it shifts the NLB's production listener between blue/green target groups; for an internal service it's a plain task-set swap. The NLB targets the app's own container_port directly — plain TCP/HTTP by default, or TLS re-encryption to a self-signed cert on that same port when var.nlb_certificate_arn is set (see nlb.tf's nlb_tls_enabled)."
   type = map(object({
     container_image        = string
     container_port         = number
@@ -99,6 +76,12 @@ variable "aurora_cluster_arn" {
 variable "aurora_secret_arn" {
   type        = string
   description = "Aurora master user secret ARN — RDS Data API's secretArn parameter for thor-api/task-api's task role"
+}
+
+variable "nlb_certificate_arn" {
+  type        = string
+  description = "ACM certificate for the NLB's TLS listener (NLB <-> ECS re-encryption). \"\" (default) keeps the NLB on plain TCP and the publicly-exposed service's container healthcheck on plain HTTP — today's behavior. Set only where the re-encryption path is actually wanted (dev only for now)."
+  default     = ""
 }
 
 variable "tags" {

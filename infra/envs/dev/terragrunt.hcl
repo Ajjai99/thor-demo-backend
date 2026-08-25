@@ -9,7 +9,6 @@ terraform {
 # Every value the root module accepts is spelled out below instead of relying on a default in infra/src/variables.tf; only `environment` is left out, since infra/root.hcl already supplies it for every environment.
 inputs = {
   # --- network ---
-  enable_network       = true
   vpc_cidr             = "10.0.0.0/16"
   az_count             = 2
   public_subnet_cidrs  = ["10.0.0.0/24", "10.0.1.0/24"]
@@ -27,8 +26,9 @@ inputs = {
       # Pinned to a real, existing tag — this repo's ECR has no "latest", so container_image = "" (its normal
       # fallback) would reference an image that doesn't exist. Needed for this apply since task_definition is
       # temporarily un-ignored on the ECS service (see services.tf) and would otherwise push a broken revision.
-      container_image        = "877969058937.dkr.ecr.us-east-1.amazonaws.com/thor-api-dev:eb9c39f998a0d3f6c0b4dce994b493a233f34744"
-      container_port         = 8080
+      container_image = ""
+      # 443 , thor-api terminates the NLB's re-encrypted TLS session itself (self-signed)
+      container_port         = 443
       cpu                    = 512  # 0.5 vCPU
       memory                 = 1024 # 1 GB
       desired_count          = 2
@@ -78,9 +78,45 @@ inputs = {
     }
   }
 
+  # --- route53 + acm (hosted zones with their certificates nested) ---
+  enable_route53 = true
+
+  hosted_zones = {
+    # Apex zone — no certificates of its own, exists only so the "dev" NS
+    # delegation record (added manually below, same as SPHERE IT would for
+    # real) has somewhere to live.
+    apex = {
+      zone_name    = "cndemo.com" # Dev
+      certificates = {}
+    }
+
+    thor = {
+      zone_name = "dev.cndemo.com"
+      certificates = {
+        frontend = {
+          domain_name = "dev.cndemo.com"
+        }
+        api_gateway = {
+          domain_name = "api.dev.cndemo.com"
+        }
+        # NLB's TLS listener cert (re-encryption) — CN/SNI only, no DNS record needed.
+        backend = {
+          domain_name = "backend.dev.cndemo.com"
+        }
+      }
+    }
+  }
+
   # --- frontend (static SPA: S3 + CloudFront) ---
-  enable_frontend      = true
-  frontend_price_class = "PriceClass_100"
+  enable_frontend          = true
+  frontend_price_class     = "PriceClass_100"
+  frontend_certificate_key = "thor/frontend"
+
+  # --- api gateway custom domain ---
+  api_gateway_certificate_key = "thor/api_gateway"
+
+  # --- nlb <-> ecs TLS re-encryption ---
+  backend_certificate_key = "thor/backend"
 
   # --- database (Aurora PostgreSQL, task-api's) ---
   # Low capacity + no deletion protection — dev is throwaway, cost-optimized.
@@ -92,19 +128,6 @@ inputs = {
   aurora_backup_retention_days = 7
   aurora_deletion_protection   = true
   aurora_skip_final_snapshot   = true
-
-  # --- rds proxy ---
-  enable_rds_proxy = true
-
-  # --- api gateway authorizer ---
-  enable_authorizer = true
-
-  # --- tls sidecar certificate (Let's Encrypt via Route53 DNS-01) ---
-  # cndemo.com's hosted zone lives in this same AWS account. Staging endpoint until the flow is confirmed
-  # working end-to-end — staging certs aren't publicly trusted either, so this alone won't pass API Gateway's
-  # tls_config yet, but it proves the DNS-01/issuance mechanics without touching Let's Encrypt's real rate limit.
-  acme_root_domain = "cndemo.com"
-  acme_server_url  = "https://acme-staging-v02.api.letsencrypt.org/directory"
 
   # --- lambda authorizer ---
   authorizer_lambda_runtime     = "dotnet10"
