@@ -30,11 +30,6 @@ variable "tags" {
   default     = {}
 }
 
-variable "tls_server_name" {
-  type        = string
-  description = "Hostname to verify against the sidecar's cert (its CN/SAN, ecs module's tls_sidecar.tf) and send via SNI — every publicly-exposed service terminates TLS via that sidecar, so this is always required"
-}
-
 variable "enable_authorizer" {
   type        = bool
   description = "Locks proxy methods behind the Lambda API-key authorizer instead of leaving them open (authorization = NONE)"

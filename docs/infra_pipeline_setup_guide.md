@@ -243,14 +243,6 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
          "Resource": "*"
        },
        {
-         "Sid": "EcrPullThroughCache",
-         "Effect": "Allow",
-         "Action": [
-           "ecr:CreatePullThroughCacheRule", "ecr:DescribePullThroughCacheRules", "ecr:DeletePullThroughCacheRule"
-         ],
-         "Resource": "*"
-       },
-       {
          "Sid": "EcsTaskDefinition",
          "Effect": "Allow",
          "Action": ["ecs:RegisterTaskDefinition", "ecs:DeregisterTaskDefinition"],
@@ -336,7 +328,6 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
          "Action": ["wafv2:*"],
          "Resource": "arn:aws:wafv2:*:*:global/webacl/thor-<environment>-frontend-waf/*"
        },
-       { "Sid": "Route53Dns", "Effect": "Allow", "Action": ["route53:*"], "Resource": "*" },
        { "Sid": "ServiceDiscovery", "Effect": "Allow", "Action": ["servicediscovery:*"], "Resource": "*" },
        {
          "Sid": "S3FrontendBucket",
@@ -455,23 +446,6 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    - **API Gateway**, **CloudFront**, **Service Discovery** — all use
      AWS-random IDs in their ARNs (REST API ID, distribution ID,
      namespace/service ID), never the `thor-<environment>-*` name itself.
-   - **Route53** — the hosted zone (`aws_route53_zone`, for the TLS
-     sidecar's Let's Encrypt DNS-01 challenge) gets an AWS-random zone ID
-     (`Z0953...`), not a name-derived one; the domain name itself
-     (`cndemo.com`) isn't part of the zone's ARN at all. Also covers the
-     ACME provider's own DNS-01 record management (`ChangeResourceRecordSets`
-     etc.), which targets that same unscoped zone ARN.
-   - **ECR pull-through cache rule management** (`CreatePullThroughCacheRule`/
-     `DescribePullThroughCacheRules`/`DeletePullThroughCacheRule`, used to
-     mirror the TLS sidecar's `nginx` base image from `public.ecr.aws`
-     since this VPC has no NAT Gateway route to reach it directly) — these
-     specific actions don't support resource-level permissions in IAM at
-     all, unlike ordinary repository push/pull. The repositories the cache
-     rule actually populates *are* ARN-scoped, but that's a separate
-     concern from managing the rule resource itself — see
-     `modules/ecs/tls_sidecar.tf`'s own IAM policy for the ECS execution
-     role's `ecr:CreateRepository`/`BatchImportUpstreamImage` grant, scoped
-     to `repository/ecr-public/*`, which is a different role than this one.
    - **Secrets Manager** — the Aurora master secret's ID is auto-generated
      by AWS (`rds!cluster-<random-uuid>`) when using
      `manage_master_user_password`, never derived from the naming

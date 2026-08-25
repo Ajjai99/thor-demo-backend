@@ -99,13 +99,6 @@ inputs = {
   # --- api gateway authorizer ---
   enable_authorizer = true
 
-  # --- tls sidecar certificate (Let's Encrypt via Route53 DNS-01) ---
-  # cndemo.com's hosted zone lives in this same AWS account. Staging endpoint until the flow is confirmed
-  # working end-to-end — staging certs aren't publicly trusted either, so this alone won't pass API Gateway's
-  # tls_config yet, but it proves the DNS-01/issuance mechanics without touching Let's Encrypt's real rate limit.
-  acme_root_domain = "cndemo.com"
-  acme_server_url  = "https://acme-staging-v02.api.letsencrypt.org/directory"
-
   # --- lambda authorizer ---
   authorizer_lambda_runtime     = "dotnet10"
   authorizer_lambda_timeout     = 60  # seconds

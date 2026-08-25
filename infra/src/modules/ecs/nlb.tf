@@ -7,13 +7,13 @@ resource "aws_lb_target_group" "thor-nlb-tg-blue" {
   for_each = local.public_services
 
   name        = local.name_prefix[each.key]
-  port        = local.sidecar_port[each.key]
+  port        = each.value.container_port
   protocol    = "TCP"
   vpc_id      = var.vpc_id
   target_type = "ip"
 
   health_check {
-    protocol            = "HTTPS"
+    protocol            = "HTTP"
     path                = each.value.health_check_path
     healthy_threshold   = 3
     unhealthy_threshold = 3
@@ -27,13 +27,13 @@ resource "aws_lb_target_group" "thor-nlb-tg-green" {
   for_each = local.public_services
 
   name        = "${local.name_prefix[each.key]}-green"
-  port        = local.sidecar_port[each.key]
+  port        = each.value.container_port
   protocol    = "TCP"
   vpc_id      = var.vpc_id
   target_type = "ip"
 
   health_check {
-    protocol            = "HTTPS"
+    protocol            = "HTTP"
     path                = each.value.health_check_path
     healthy_threshold   = 3
     unhealthy_threshold = 3

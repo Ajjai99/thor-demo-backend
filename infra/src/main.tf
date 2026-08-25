@@ -29,10 +29,6 @@ locals {
   # The one service with expose_via_nlb = true.
   public_service_name = [for k, v in var.services : k if v.expose_via_nlb][0]
 
-  # Shared by the sidecar's cert (tls_certificate.tf) and API Gateway's tls_config (must match exactly, or SNI
-  # verification fails) — one source of truth so they can't drift apart.
-  tls_server_name = "${local.public_service_name}-${var.environment}.${var.acme_root_domain}"
-
   # Proxy endpoint when enabled, Aurora's own endpoint otherwise.
   db_host = var.enable_rds_proxy ? module.rds_proxy[0].endpoint : module.aurora.endpoint
 
@@ -68,22 +64,6 @@ module "ecs" {
   aurora_cluster_arn = module.aurora.cluster_arn
   aurora_secret_arn  = module.aurora.master_user_secret_arn
 
-  tls_sidecar_entrypoint_script = var.tls_sidecar_entrypoint_script
-  tls_certificate_pem           = var.enable_compute ? module.tls_certificate[0].certificate_pem : ""
-  tls_certificate_chain_pem     = var.enable_compute ? module.tls_certificate[0].certificate_chain_pem : ""
-  tls_private_key_pem           = var.enable_compute ? module.tls_certificate[0].private_key_pem : ""
-
-  tags = var.tags
-}
-
-module "tls_certificate" {
-  count = var.enable_compute ? 1 : 0
-
-  source = "./modules/tls_certificate"
-
-  root_domain = var.acme_root_domain
-  common_name = local.tls_server_name
-
   tags = var.tags
 }
 
@@ -110,9 +90,6 @@ module "api_gateway" {
   nlb_listener_arn   = module.ecs.nlb_listener_arns[local.public_service_name]
   vpc_id             = local.vpc_id
   private_subnet_ids = local.private_subnet_ids
-
-  # Must match the sidecar's cert CN exactly — see the shared local above and tls_certificate.tf.
-  tls_server_name = local.tls_server_name
 
   enable_authorizer               = var.enable_authorizer
   authorizer_lambda_invoke_arn    = var.enable_authorizer ? module.lambda[0].lambda_invoke_arn : ""
