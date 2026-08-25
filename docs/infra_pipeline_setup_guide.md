@@ -345,6 +345,18 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
          "Resource": "arn:aws:s3:::thor-frontend-<environment>-*"
        },
        {
+         "Sid": "TerraformStateBucket",
+         "Effect": "Allow",
+         "Action": ["s3:ListBucket"],
+         "Resource": "arn:aws:s3:::thor-terraform-state-<account-id>"
+       },
+       {
+         "Sid": "TerraformStateObjects",
+         "Effect": "Allow",
+         "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+         "Resource": "arn:aws:s3:::thor-terraform-state-<account-id>/thor-<environment>/*"
+       },
+       {
          "Sid": "KmsForManagedSecrets",
          "Effect": "Allow",
          "Action": ["kms:DescribeKey"],

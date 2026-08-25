@@ -17,27 +17,24 @@ locals {
   }
 
   account = local.account_map[local.environment]
-
-  jfrog_hostname = get_env("JFROG_HOSTNAME")
-  repo_name      = get_env("JFROG_STATE_BACKEND_REPOSITORY")
 }
 
-# Backend config via generate
-generate "backend" {
-  path      = "backend.tf"
-  if_exists = "overwrite_terragrunt"
-  contents  = <<EOF
-terraform {
-  backend "remote" {
-    hostname     = "${local.jfrog_hostname}"
-    organization = "${local.repo_name}"
-
-    workspaces {
-      name = "thor-${local.environment}"
-    }
+# JFrog Cloud trial expired — reverted to S3, the pre-2026-08-11 backend (see commit a18e7e5 for the original
+# JFrog switch and its reasoning). No state migration: dev's JFrog-tracked state as of this revert was purely
+# from IAM-policy testing, not worth carrying over — this bucket/key starts fresh.
+remote_state {
+  backend = "s3"
+  generate = {
+    path      = "backend.tf"
+    if_exists = "overwrite_terragrunt"
   }
-}
-EOF
+  config = {
+    bucket       = "thor-terraform-state-${local.account.account_id}"
+    key          = "thor-${local.environment}/terraform.tfstate"
+    region       = local.account.aws_region
+    use_lockfile = true
+    encrypt      = true
+  }
 }
 
 generate "provider" {
