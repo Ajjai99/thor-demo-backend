@@ -130,7 +130,6 @@ variable "acme_root_domain" {
   description = "Registered domain with a Route 53 public hosted zone in this account, used for the sidecar cert's DNS-01 challenge. The cert's hostname is \"<service>-<environment>.<this domain>\", e.g. thor-api-dev.cndemo.com."
 }
 
-# tflint-ignore: terraform_unused_declarations — only referenced in root.hcl's generated provider.tf, which tflint (run directly against infra/src) never sees.
 variable "acme_server_url" {
   type        = string
   description = "ACME directory URL. Use Let's Encrypt's staging endpoint (https://acme-staging-v02.api.letsencrypt.org/directory) until the flow is confirmed working — staging certs aren't publicly trusted, so API Gateway's tls_config will still reject them, but staging avoids burning the real production issuance rate limit while testing. Switch to https://acme-v02.api.letsencrypt.org/directory once verified."
