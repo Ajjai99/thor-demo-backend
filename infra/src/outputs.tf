@@ -15,7 +15,7 @@ output "private_subnet_ids" {
 }
 
 output "vpc_endpoints_security_group_id" {
-  value = var.enable_network ? module.network[0].vpc_endpoints_security_group_id : null
+  value = module.network.vpc_endpoints_security_group_id
 }
 
 # Not guarded by enable_compute — the cluster, namespace, and ECR repos exist regardless of it.

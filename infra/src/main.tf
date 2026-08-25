@@ -5,10 +5,7 @@ terraform {
   required_version = ">= 1.15"
 }
 
-# Skipped when this environment borrows dev's VPC (e.g. qa).
 module "network" {
-  count = var.enable_network ? 1 : 0
-
   source = "./modules/network"
 
   environment          = var.environment
@@ -21,10 +18,10 @@ module "network" {
 }
 
 locals {
-  vpc_id             = var.enable_network ? module.network[0].vpc_id : var.dev_vpc_id
-  vpc_cidr_effective = var.enable_network ? module.network[0].vpc_cidr : var.dev_vpc_cidr
-  public_subnet_ids  = var.enable_network ? module.network[0].public_subnet_ids : var.dev_public_subnet_ids
-  private_subnet_ids = var.enable_network ? module.network[0].private_subnet_ids : var.dev_private_subnet_ids
+  vpc_id             = module.network.vpc_id
+  vpc_cidr_effective = module.network.vpc_cidr
+  public_subnet_ids  = module.network.public_subnet_ids
+  private_subnet_ids = module.network.private_subnet_ids
 
   # The one service with expose_via_nlb = true.
   public_service_name = [for k, v in var.services : k if v.expose_via_nlb][0]

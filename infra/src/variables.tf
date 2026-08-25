@@ -5,16 +5,9 @@ variable "environment" {
 
 # --- network ---
 
-variable "enable_network" {
-  type        = bool
-  description = "Whether to create this environment's own VPC. Set false to borrow dev's VPC instead (see dev_* variables) and skip that VPC's endpoint/NAT costs entirely."
-  default     = true
-}
-
 variable "vpc_cidr" {
   type        = string
-  description = "CIDR block for the VPC. Unused when enable_network is false."
-  default     = ""
+  description = "CIDR block for the VPC"
 }
 
 variable "az_count" {
@@ -25,46 +18,18 @@ variable "az_count" {
 
 variable "public_subnet_cidrs" {
   type        = list(string)
-  description = "CIDR blocks for public subnets, one per AZ. Unused when enable_network is false."
-  default     = []
+  description = "CIDR blocks for public subnets, one per AZ"
 }
 
 variable "private_subnet_cidrs" {
   type        = list(string)
-  description = "CIDR blocks for private subnets, one per AZ. Unused when enable_network is false."
-  default     = []
+  description = "CIDR blocks for private subnets, one per AZ"
 }
 
 variable "enable_vpc_endpoints" {
   type        = bool
   description = "Create gateway/interface VPC endpoints instead of NAT Gateway egress"
   default     = true
-}
-
-# --- dev's network (used only when enable_network = false) ---
-
-variable "dev_vpc_id" {
-  type        = string
-  description = "dev's VPC ID, to deploy compute into when this environment doesn't create its own (passed in via a Terragrunt dependency block)"
-  default     = null
-}
-
-variable "dev_vpc_cidr" {
-  type        = string
-  description = "CIDR of dev's VPC — scopes the compute security group's egress"
-  default     = null
-}
-
-variable "dev_public_subnet_ids" {
-  type        = list(string)
-  description = "dev's public subnet IDs, for the ALB"
-  default     = []
-}
-
-variable "dev_private_subnet_ids" {
-  type        = list(string)
-  description = "dev's private subnet IDs, for the ECS tasks"
-  default     = []
 }
 
 # --- compute (shared ECS cluster running thor-api, task-api, intelligence-engine) ---

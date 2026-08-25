@@ -6,29 +6,15 @@ terraform {
   source = "../../src"
 }
 
-
-dependency "dev" {
-  config_path = "../dev"
-
-  mock_outputs = {
-    vpc_id             = "vpc-mock00000000"
-    vpc_cidr           = "10.255.255.0/24"
-    public_subnet_ids  = ["subnet-mockpub1", "subnet-mockpub2"]
-    private_subnet_ids = ["subnet-mockpriv1", "subnet-mockpriv2"]
-  }
-  mock_outputs_allowed_terraform_commands = ["plan", "validate"]
-}
-
 # Every value the root module accepts is spelled out below, same as envs/dev — only `environment` is left out, root.hcl supplies it.
 inputs = {
   # --- network ---
-  # qa borrows dev's VPC — vpc_cidr/subnet_cidrs below are unused while enable_network is false.
-  enable_network = false
-
-  dev_vpc_id             = dependency.dev.outputs.vpc_id
-  dev_vpc_cidr           = dependency.dev.outputs.vpc_cidr
-  dev_public_subnet_ids  = dependency.dev.outputs.public_subnet_ids
-  dev_private_subnet_ids = dependency.dev.outputs.private_subnet_ids
+  # qa's own VPC — 10.1.0.0/16 to stay non-overlapping with dev's 10.0.0.0/16 (same AWS account).
+  vpc_cidr             = "10.1.0.0/16"
+  az_count             = 2
+  public_subnet_cidrs  = ["10.1.0.0/24", "10.1.1.0/24"]
+  private_subnet_cidrs = ["10.1.10.0/24", "10.1.11.0/24"]
+  enable_vpc_endpoints = true
 
   # --- ecs compute ---
   enable_compute            = false

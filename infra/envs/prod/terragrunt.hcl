@@ -9,7 +9,6 @@ terraform {
 # Every value the root module accepts is spelled out below, same as envs/dev — only `environment` is left out, root.hcl supplies it.
 inputs = {
   # --- network ---
-  enable_network       = true
   vpc_cidr             = "10.0.0.0/16"
   az_count             = 2
   public_subnet_cidrs  = ["10.0.0.0/24", "10.0.1.0/24"]
@@ -17,7 +16,7 @@ inputs = {
   enable_vpc_endpoints = true
 
   # --- ecs compute ---
-  enable_compute            = true
+  enable_compute            = false
   enable_container_insights = true
 
   # container_image = "" falls back to that service's own ECR repo at the "latest" tag; set it explicitly once CI promotes a real image. ROLLING, not BLUE_GREEN — the test-traffic listener now exists (nlb.tf), but nothing in the pipeline actually exercises it against green before cutover yet.
