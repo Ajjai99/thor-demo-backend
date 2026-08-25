@@ -63,6 +63,8 @@ module "ecs" {
   aurora_cluster_arn = module.aurora.cluster_arn
   aurora_secret_arn  = module.aurora.master_user_secret_arn
 
+  nlb_certificate_arn = local.backend_route53 != null ? local.backend_route53.certificate_arn : ""
+
   tags = var.tags
 }
 
@@ -133,6 +135,14 @@ locals {
     certificate_arn = module.acm[0].certificate_arns[var.api_gateway_certificate_key]
     zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.api_gateway_certificate_key].zone_name]
   } : null
+
+  # Same pattern again, for the NLB's TLS listener (NLB <-> ECS re-encryption) and API Gateway's
+  # matching tls_config — both need to agree on whether TLS is on, so both read this same local.
+  backend_route53 = var.enable_route53 && var.backend_certificate_key != "" ? {
+    domain_name     = local.route53_certificates_flat[var.backend_certificate_key].domain_name
+    certificate_arn = module.acm[0].certificate_arns[var.backend_certificate_key]
+    zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.backend_certificate_key].zone_name]
+  } : null
 }
 
 # Private S3 + CloudFront for the frontend SPA.
@@ -169,6 +179,10 @@ module "api_gateway" {
   domain_name         = local.api_gateway_route53 != null ? local.api_gateway_route53.domain_name : ""
   acm_certificate_arn = local.api_gateway_route53 != null ? local.api_gateway_route53.certificate_arn : ""
   zone_id             = local.api_gateway_route53 != null ? local.api_gateway_route53.zone_id : ""
+
+  # Must agree with the NLB's own TLS state (modules/ecs/nlb.tf's nlb_tls_enabled) — API Gateway
+  # only needs to validate the NLB's cert when the NLB actually presents one.
+  tls_server_name = local.backend_route53 != null ? local.backend_route53.domain_name : ""
 
   tags = var.tags
 }

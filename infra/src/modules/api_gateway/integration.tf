@@ -10,8 +10,15 @@ resource "aws_apigatewayv2_integration" "proxy" {
   integration_uri        = var.nlb_listener_arn
   payload_format_version = "1.0"
 
-  # NLB stays TCP passthrough — plain HTTP end to end from API Gateway through the VPC Link to the app's own
-  # container_port. No TLS between API Gateway and the backend; the VPC Link path is already private.
+  # Plain HTTP end to end (var.tls_server_name == "") unless the NLB actually presents a real
+  # cert — must agree with the NLB's own TLS state (modules/ecs/nlb.tf's nlb_tls_enabled), not
+  # decided independently here.
+  dynamic "tls_config" {
+    for_each = var.tls_server_name != "" ? [1] : []
+    content {
+      server_name_to_verify = var.tls_server_name
+    }
+  }
 }
 
 resource "aws_apigatewayv2_route" "proxy_root_get" {

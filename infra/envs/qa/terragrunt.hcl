@@ -37,8 +37,9 @@ inputs = {
   # container_image = "" falls back to that service's own ECR repo at the "latest" tag; set it explicitly to pin a specific tag.
   services = {
     thor-api = {
-      container_image        = ""
-      container_port         = 8080
+      container_image = ""
+      # 443, thor-api terminates the NLB's re-encrypted TLS session itself (self-signed cert, see Program.cs).
+      container_port         = 443
       cpu                    = 512
       memory                 = 1024
       desired_count          = 2
@@ -112,6 +113,10 @@ inputs = {
         api_gateway = {
           domain_name = "api.qa.cndemo.com"
         }
+        # NLB's TLS listener cert (re-encryption) — CN/SNI only, no DNS record needed.
+        backend = {
+          domain_name = "backend.qa.cndemo.com"
+        }
       }
     }
   }
@@ -123,6 +128,9 @@ inputs = {
 
   # --- api gateway custom domain ---
   api_gateway_certificate_key = "thor/api_gateway"
+
+  # --- nlb <-> ecs TLS re-encryption ---
+  backend_certificate_key = "thor/backend"
 
   # --- database (Aurora PostgreSQL, task-api's) ---
   aurora_database_name         = "thor_qa_db"

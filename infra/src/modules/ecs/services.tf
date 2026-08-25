@@ -46,17 +46,28 @@ resource "aws_ecs_task_definition" "thor-svc-taskdef" {
         }
       ]
 
-      environment = [
-        for k, v in each.value.environment_variables : { name = k, value = v }
-      ]
+      environment = concat(
+        [for k, v in each.value.environment_variables : { name = k, value = v }],
+        # Fixed path/password baked into the image by the Dockerfile's openssl step — not a
+        # deployment-time secret, so it's injected here rather than via terragrunt.hcl.
+        each.value.expose_via_nlb && local.nlb_tls_enabled ? [
+          { name = "TLS_CERT_PFX_PATH", value = "/app/certs/server.pfx" },
+          { name = "TLS_CERT_PFX_PASSWORD", value = "thor-internal" },
+        ] : []
+      )
 
       secrets = [
         for k, v in each.value.secrets : { name = k, valueFrom = v }
       ]
 
       # Lets ECS detect a hung-but-running container on task-api/intelligence-engine, which have no ALB health check; assumes the image has curl on PATH.
+      # -k (skip cert validation) only matters for the TLS branch, where the cert is self-signed.
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:${each.value.container_port}${each.value.health_check_path} || exit 1"]
+        command = each.value.expose_via_nlb && local.nlb_tls_enabled ? [
+          "CMD-SHELL", "curl -k -f https://localhost:${each.value.container_port}${each.value.health_check_path} || exit 1"
+          ] : [
+          "CMD-SHELL", "curl -f http://localhost:${each.value.container_port}${each.value.health_check_path} || exit 1"
+        ]
         interval    = 30
         timeout     = 5
         retries     = 3

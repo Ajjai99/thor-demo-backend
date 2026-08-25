@@ -23,8 +23,9 @@ inputs = {
   # container_image = "" falls back to that service's own ECR repo at the "latest" tag; set it explicitly once CI promotes a real image. ROLLING, not BLUE_GREEN — the test-traffic listener now exists (nlb.tf), but nothing in the pipeline actually exercises it against green before cutover yet.
   services = {
     thor-api = {
-      container_image        = ""
-      container_port         = 8080
+      container_image = ""
+      # 443, thor-api terminates the NLB's re-encrypted TLS session itself (self-signed cert, see Program.cs).
+      container_port         = 443
       cpu                    = 1024
       memory                 = 2048
       desired_count          = 4
@@ -75,18 +76,44 @@ inputs = {
   }
 
   # --- route53 + acm (hosted zones with their certificates nested) ---
-  # Prod's domain is a fully separate decision from dev/qa's cndemo.com —
-  # still unconfirmed, so left empty rather than guessed.
-  enable_route53 = false
-  hosted_zones   = {}
+  enable_route53 = true
+
+  hosted_zones = {
+    # Same apex zone dev creates — looked up here, not created, so this
+    # doesn't fight dev over who owns cndemo.com.
+    apex = {
+      zone_name    = "cndemo.com"
+      create_zone  = false
+      certificates = {}
+    }
+
+    thor = {
+      zone_name = "prod.cndemo.com"
+      certificates = {
+        frontend = {
+          domain_name = "prod.cndemo.com"
+        }
+        api_gateway = {
+          domain_name = "api.prod.cndemo.com"
+        }
+        # NLB's TLS listener cert (re-encryption) — CN/SNI only, no DNS record needed.
+        backend = {
+          domain_name = "backend.prod.cndemo.com"
+        }
+      }
+    }
+  }
 
   # --- frontend (static SPA: S3 + CloudFront) ---
   enable_frontend          = true
   frontend_price_class     = "PriceClass_100"
-  frontend_certificate_key = ""
+  frontend_certificate_key = "thor/frontend"
 
   # --- api gateway custom domain ---
-  api_gateway_certificate_key = ""
+  api_gateway_certificate_key = "thor/api_gateway"
+
+  # --- nlb <-> ecs TLS re-encryption ---
+  backend_certificate_key = "thor/backend"
 
   # --- database (Aurora PostgreSQL, task-api's) ---
   # Deletion protection on, real final snapshot kept, longer backup retention than dev — prod is not disposable. min/max_capacity are a starting guess, not tuned against real traffic yet.

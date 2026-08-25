@@ -339,7 +339,22 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
          "Resource": "arn:aws:acm:*:*:certificate/*"
        },
        { "Sid": "AcmList", "Effect": "Allow", "Action": ["acm:ListCertificates"], "Resource": "*" },
-       { "Sid": "Route53Dns", "Effect": "Allow", "Action": ["route53:*"], "Resource": "*" },
+       { "Sid": "Route53Create", "Effect": "Allow", "Action": ["route53:CreateHostedZone"], "Resource": "*" },
+      {
+         "Sid": "Route53Zone",
+         "Effect": "Allow",
+         "Action": ["route53:GetHostedZone", "route53:ChangeResourceRecordSets", "route53:ListResourceRecordSets"],
+         "Resource": "arn:aws:route53:::hostedzone/*"
+       },
+      {
+         "Sid": "Route53List",
+         "Effect": "Allow",
+         "Action": [
+           "route53:ListHostedZones", "route53:ListHostedZonesByName", "route53:GetChange",
+           "route53:DeleteHostedZone", "route53:ChangeTagsForResource", "route53:ListTagsForResource"
+         ],
+         "Resource": "*"
+       },
        { "Sid": "ServiceDiscovery", "Effect": "Allow", "Action": ["servicediscovery:*"], "Resource": "*" },
        {
          "Sid": "S3FrontendBucket",
@@ -385,7 +400,7 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
          "Sid": "RdsProxy",
          "Effect": "Allow",
          "Action": ["rds:CreateDBProxy", "rds:ModifyDBProxy", "rds:DeleteDBProxy", "rds:DescribeDBProxies"],
-         "Resource": "arn:aws:rds:*:*:db-proxy:thor-<environment>-rds-proxy"
+         "Resource": "*"
        },
        {
          "Sid": "RdsProxyTargets",
@@ -396,7 +411,17 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
          ],
          "Resource": "*"
        },
-       { "Sid": "SecretsManager", "Effect": "Allow", "Action": ["secretsmanager:*"], "Resource": "*" },
+       {
+         "Sid": "Neptune",
+         "Effect": "Allow",
+         "Action": ["rds:*"],
+         "Resource": [
+           "arn:aws:rds:*:*:cluster:thor-<environment>-neptune",
+           "arn:aws:rds:*:*:db:thor-<environment>-neptune-*",
+           "arn:aws:rds:*:*:subgrp:thor-<environment>-neptune"
+         ]
+       },
+      { "Sid": "SecretsManager", "Effect": "Allow", "Action": ["secretsmanager:*"], "Resource": "*" },
        {
          "Sid": "Lambda",
          "Effect": "Allow",
@@ -430,57 +455,27 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    }
    ```
 
-   **Scoped to `thor-<environment>-*`** (or a close variant): ECR, ECS,
-   load balancing, the S3 frontend bucket, RDS/RDS Data API, RDS Proxy,
-   Lambda, CloudWatch Logs, WAF, and IAM role management/`PassRole`. No S3
-   statement for Terraform state — that lives in JFrog Artifactory
-   (Step 4), not an S3 bucket this role needs access to.
+   **Scoped to `thor-<environment>-*`:** ECR, ECS, load balancing, the S3
+   frontend bucket, RDS/RDS Data API, Neptune, Lambda, CloudWatch Logs,
+   WAF, and IAM role management/`PassRole`. No S3 statement for Terraform
+   state — that lives in JFrog Artifactory (Step 4), not an S3 bucket
+   this role needs access to.
 
-   **`RdsProxy`'s ARN is unverified, same caveat as the ELB listener ARN
-   below**: written as `db-proxy:thor-<environment>-rds-proxy` (the
-   `db_proxy_name`), matching how its `Rds` sibling statement scopes
-   `cluster`/`db`/`subgrp` by name rather than an AWS-generated ID — but
-   unlike those, this hasn't been confirmed against AWS's own IAM
-   resource-type reference for the `rds:` (not `rds-db:`) namespace
-   specifically. If `CreateDBProxy`/etc. get denied unexpectedly, check
-   the ARN in the error message; it may need to be the `prx-<random-id>`
-   AWS assigns instead, same as the `rds-db:connect` runtime-auth ARN
-   uses (a different, already-confirmed case, not this one).
+   **Why some statements use `Resource: "*"` instead of a scoped ARN:**
+   in each case, the resource's identifier is AWS-generated rather than
+   derived from the `thor-<environment>-*` naming convention, so a name
+   pattern could never actually match it.
 
-   **Left as `Resource: "*"` on purpose, not by oversight:**
-   - **EC2** — VPC/subnet/security-group IDs (`vpc-xxxxx`) are AWS-random,
-     not name-derived. Scoping by name would mean scoping by the `Name`
-     *tag* instead of the ARN, and many EC2 create actions don't support
-     resource-level permissions or tag-on-create conditions consistently
-     — getting this wrong is the likeliest way to break `terraform apply`
-     outright (e.g. "create a new VPC" evaluated before the resource, and
-     its tag, exist).
-   - **API Gateway**, **CloudFront**, **Service Discovery** — all use
-     AWS-random IDs in their ARNs (REST API ID, distribution ID,
-     namespace/service ID), never the `thor-<environment>-*` name itself.
-   - **Route53** — hosted zone IDs (`Z0953...`) are AWS-random, not
-     name-derived; the domain name itself never appears in the zone's ARN.
-     Used by `modules/route53` (zone create/lookup) and `modules/acm`'s
-     validation records, plus the frontend/api_gateway custom-domain alias
-     records.
-   - **ACM's `ListCertificates`** (separate `AcmList` statement) — confirmed
-     via AWS's own ACM API permissions reference that this specific action
-     requires bare `Resource: "*"`, unlike every other ACM action used here
-     (`RequestCertificate`/`DescribeCertificate`/`DeleteCertificate`/tagging),
-     which do support `certificate/*` (ID-wildcarded) scoping — kept in the
-     main `Acm` statement.
-   - **Secrets Manager** — the Aurora master secret's ID is auto-generated
-     by AWS (`rds!cluster-<random-uuid>`) when using
-     `manage_master_user_password`, never derived from the naming
-     convention at all.
+   | Service | Reason |
+   |---|---|
+   | EC2 | VPC/subnet/security-group IDs (`vpc-xxxxx`) are AWS-random — and many EC2 create actions don't reliably support ARN or tag-on-create scoping anyway |
+   | API Gateway, CloudFront, Service Discovery | ARNs use AWS-random IDs (API ID, distribution ID, namespace ID), never the `thor-<environment>-*` name |
+   | Route53 | Hosted zone IDs (`Z0953...`) are AWS-random; the domain name never appears in the zone's ARN |
+   | ACM `ListCertificates` | Confirmed via AWS's ACM docs — this one action needs bare `Resource: "*"`, unlike the rest of the `Acm` statement (which scopes to `certificate/*`) |
+   | Secrets Manager | Aurora's master-password secret gets an AWS-generated ID (`rds!cluster-<uuid>`) via `manage_master_user_password` — never name-derived |
+   | RDS Proxy | Confirmed via a real `DBProxyArn` (AWS SDK/CloudFormation issue tracker) — its identifier is an AWS-generated `prx-<random-id>`, not the chosen `db_proxy_name`; same class of problem as EC2 above |
 
-   **Not fully verified — treat as best-effort, not guaranteed-exact**:
-   the ARN formats above follow AWS's documented patterns, but a couple
-   (the ELB listener ARN's segment count in particular) haven't been
-   confirmed against a real apply in this account. If something gets
-   denied unexpectedly, check the exact ARN in the CloudTrail/IAM error
-   message against the pattern above before assuming the permission is
-   simply missing.
+   ELB listener/target group/load balancer ARN segment counts (`listener/net/<name>/<lb-id>/<listener-id>`, etc.) are confirmed against AWS's documented format, not just assumed.
 
 7. Name the role (`deploy-dev`/`deploy-qa`/`deploy-prod`) and copy its
    **ARN** — needed in Step 4.

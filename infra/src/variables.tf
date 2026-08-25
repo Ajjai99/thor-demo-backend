@@ -176,6 +176,12 @@ variable "api_gateway_certificate_key" {
   default     = ""
 }
 
+variable "backend_certificate_key" {
+  type        = string
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/backend\") the NLB's TLS listener cert comes from, for NLB <-> ECS re-encryption. \"\" (default) leaves the NLB on plain TCP and the app on plain HTTP:8080, today's behavior — set only where the re-encryption path is actually wanted (dev only for now)."
+  default     = ""
+}
+
 # --- api gateway authorizer (Lambda, validates connector API keys against Aurora) ---
 
 variable "authorizer_lambda_runtime" {

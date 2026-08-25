@@ -27,8 +27,9 @@ inputs = {
       # Pinned to a real, existing tag — this repo's ECR has no "latest", so container_image = "" (its normal
       # fallback) would reference an image that doesn't exist. Needed for this apply since task_definition is
       # temporarily un-ignored on the ECS service (see services.tf) and would otherwise push a broken revision.
-      container_image        = ""
-      container_port         = 8080
+      container_image = ""
+      # 443 , thor-api terminates the NLB's re-encrypted TLS session itself (self-signed)
+      container_port         = 443
       cpu                    = 512  # 0.5 vCPU
       memory                 = 1024 # 1 GB
       desired_count          = 2
@@ -99,6 +100,10 @@ inputs = {
         api_gateway = {
           domain_name = "api.dev.cndemo.com"
         }
+        # NLB's TLS listener cert (re-encryption) — CN/SNI only, no DNS record needed.
+        backend = {
+          domain_name = "backend.dev.cndemo.com"
+        }
       }
     }
   }
@@ -110,6 +115,9 @@ inputs = {
 
   # --- api gateway custom domain ---
   api_gateway_certificate_key = "thor/api_gateway"
+
+  # --- nlb <-> ecs TLS re-encryption ---
+  backend_certificate_key = "thor/backend"
 
   # --- database (Aurora PostgreSQL, task-api's) ---
   # Low capacity + no deletion protection — dev is throwaway, cost-optimized.

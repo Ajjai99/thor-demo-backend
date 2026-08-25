@@ -57,3 +57,9 @@ variable "zone_id" {
   description = "Hosted zone domain_name's alias records get created in. Required when domain_name is set, unused otherwise."
   default     = ""
 }
+
+variable "tls_server_name" {
+  type        = string
+  description = "Hostname to verify against the NLB listener's cert (its CN/SAN) and send via SNI, for NLB <-> ECS TLS re-encryption. \"\" (default) leaves the integration on plain HTTP, matching the NLB's own default (non-TLS) listener — must agree with whatever set the NLB's cert (main.tf's backend_route53)."
+  default     = ""
+}
