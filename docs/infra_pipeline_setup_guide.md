@@ -18,17 +18,17 @@ applies Terraform/Terragrunt changes under `infra/` for `dev`, `qa`, and
    `PROD_AWS_ROLE_ARN`/`AWS_REGION`) plus the `dev`/`qa`/`prod` GitHub
    Environments (already needed by backend deploy) — `qa`/`prod`
    configured with required reviewers, `dev` left unprotected.
-5. A `JFROG_ACCESS_TOKEN` repo secret — Terraform state now lives in
-   JFrog Artifactory, not S3, and every job running a `terragrunt`
-   command needs this to authenticate to it.
+5. JFrog repo-level secrets/variables — the Terraform state backend *and*
+   the Lambda build cache both run through JFrog Artifactory now, not S3.
 
 **File location:** `.github/workflows/infra.yml`
 
 ## How this differs from a per-job-environment setup
 
-Only two of `infra.yml`'s six jobs (`apply-terragrunt`, `seed-ecr-placeholder`)
-set a GitHub Environment at all — `init-terragrunt`/`validate-terragrunt`/
-`plan-terragrunt` never do, for any branch, since they're read-only and
+Only two of `infra.yml`'s five jobs (`apply-terragrunt`, `seed-ecr-placeholder`)
+set a GitHub Environment at all — `validate-terragrunt` (which now runs
+`terragrunt init` internally, rather than a separate `init-terragrunt` job)
+and `plan-terragrunt` never do, for any branch, since they're read-only and
 there's nothing to gate. `apply-terragrunt`/`seed-ecr-placeholder` run
 under the environment `context` resolved (`dev`/`qa`/`prod`) — the same
 three Environments the backend deploy pipeline already uses. `dev` has no
@@ -49,61 +49,18 @@ environment's real AWS account ID:
 
 ```hcl
 account_map = {
-  dev = {
-    account_id = "<DEV_ACCOUNT_ID>"
-    aws_region = "us-east-1"
-  }
-  qa = {
-    account_id = "<QA_ACCOUNT_ID>" # same account as dev
-    aws_region = "us-east-1"
-  }
-  prod = {
-    account_id = "<PROD_ACCOUNT_ID>" # isolated from dev/qa
-    aws_region = "us-east-1"
-  }
+  dev  = { account_name = "dev",  account_id = "<DEV_ACCOUNT_ID>",  aws_region = "us-east-1" }
+  qa   = { account_name = "qa",   account_id = "<QA_ACCOUNT_ID>",   aws_region = "us-east-1" }
+  prod = { account_name = "prod", account_id = "<PROD_ACCOUNT_ID>", aws_region = "us-east-1" }
 }
 ```
 
-`account_id` isn't read by any Terraform logic today — state lives in
-JFrog Artifactory (Step 2 below), not an account-scoped S3 bucket, so
-nothing in this repo derives a resource name from it. It's still worth
-filling in accurately: it documents which of the two AWS accounts each
-environment actually lives in (dev and qa share one, prod is isolated),
-an assumption the IAM steps below rely on.
+Note: Terraform state now lives in JFrog Artifactory, not S3 (configured
+via Step 4's `JFROG_HOSTNAME`/`JFROG_STATE_BACKEND_REPOSITORY`) —
+`account_id` itself isn't read anywhere in `root.hcl` (only `aws_region`
+feeds the AWS provider).
 
-## Step 2: Configure the JFrog Artifactory state backend
-
-Terraform state lives in JFrog Artifactory (a `remote`/TFC-compatible
-backend, configured via `infra/root.hcl`'s `generate "backend"` block —
-not something this guide's steps touch), not S3. Every job that runs a
-`terragrunt` command authenticates to it the same way `terraform login`
-would locally, but non-interactively:
-
-1. In the JFrog instance, generate an access token scoped to the
-   `terraform-state-local` repository (or whichever repo `root.hcl`'s
-   `repo_name` points at).
-2. **Repo → Settings → Secrets and variables → Actions → Secrets** (repo
-   level): add `JFROG_ACCESS_TOKEN` with that token's value.
-3. `infra.yml` already wires this up — its workflow-level `env` sets
-   `TF_TOKEN_trialc6mgth_jfrog_io: ${{ secrets.JFROG_ACCESS_TOKEN }}`. The
-   env var's name must match the backend's `hostname` (dots become
-   underscores); if `root.hcl`'s `jfrog_hostname` ever changes, this env
-   var name has to change with it.
-4. `root.hcl`'s `jfrog_hostname`/`repo_name` locals read `JFROG_HOSTNAME`/
-   `JFROG_STATE_BACKEND_REPOSITORY` via `get_env()` with **no fallback
-   default** — both are required, or every `terragrunt` command (plan,
-   apply, init, validate, destroy) fails immediately at the locals-eval
-   step with `EnvVarNotFoundError`. In CI, `infra.yml`'s workflow-level
-   `env` already supplies both from the repo-level `JFROG_HOSTNAME` /
-   `JFROG_STATE_BACKEND_REPOSITORY` variables (**Repo → Settings →
-   Secrets and variables → Actions → Variables**). For **local** runs,
-   export them yourself first:
-   ```
-   export JFROG_HOSTNAME=trialc6mgth.jfrog.io
-   export JFROG_STATE_BACKEND_REPOSITORY=terraform-state-local
-   ```
-
-## Step 3: Create the OIDC identity provider (AWS Console)
+## Step 2: Create the OIDC identity provider (AWS Console)
 
 Once per AWS account:
 
@@ -113,14 +70,14 @@ Once per AWS account:
 4. Audience: `sts.amazonaws.com`
 5. **Add provider**
 
-## Step 4: Create the three deploy roles (AWS Console)
+## Step 3: Create the three deploy roles (AWS Console)
 
 Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
 `deploy-dev`/`deploy-qa`/`deploy-prod`.
 
 1. **IAM → Roles → Create role**
 2. Trusted entity type: **Web identity**
-3. Identity provider: the one from Step 3
+3. Identity provider: the one from Step 2
 4. Audience: `sts.amazonaws.com`
 5. Skip the console's repo/branch fields (only support one combo — each of
    these roles needs several trusted at once). Create the role, then edit
@@ -227,12 +184,77 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    {
      "Version": "2012-10-17",
      "Statement": [
-       { "Sid": "Ec2Networking", "Effect": "Allow", "Action": ["ec2:*"], "Resource": "*" },
+       {
+         "Sid": "Ec2NetworkingDescribe",
+         "Effect": "Allow",
+         "Action": ["ec2:Describe*"],
+         "Resource": "*"
+       },
+       {
+         "Sid": "Ec2NetworkingCreate",
+         "Effect": "Allow",
+         "Action": [
+           "ec2:CreateVpc", "ec2:CreateSubnet", "ec2:CreateSecurityGroup",
+           "ec2:CreateRouteTable", "ec2:CreateInternetGateway", "ec2:CreateVpcEndpoint",
+           "ec2:CreateTags"
+         ],
+         "Resource": "*",
+         "Condition": {
+           "StringEquals": { "aws:RequestTag/Environment": "<environment>" }
+         }
+       },
+       {
+         "Sid": "Ec2NetworkingManageOwn",
+         "Effect": "Allow",
+         "Action": [
+           "ec2:ModifyVpcAttribute", "ec2:DeleteVpc",
+           "ec2:ModifySubnetAttribute", "ec2:DeleteSubnet",
+           "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",
+           "ec2:RevokeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress", "ec2:DeleteSecurityGroup",
+           "ec2:CreateRoute", "ec2:DeleteRoute", "ec2:ReplaceRoute",
+           "ec2:AssociateRouteTable", "ec2:DisassociateRouteTable", "ec2:ReplaceRouteTableAssociation",
+           "ec2:DeleteRouteTable",
+           "ec2:AttachInternetGateway", "ec2:DetachInternetGateway", "ec2:DeleteInternetGateway",
+           "ec2:ModifyVpcEndpoint", "ec2:DeleteVpcEndpoints",
+           "ec2:DeleteTags"
+         ],
+         "Resource": [
+           "arn:aws:ec2:*:*:vpc/*",
+           "arn:aws:ec2:*:*:subnet/*",
+           "arn:aws:ec2:*:*:security-group/*",
+           "arn:aws:ec2:*:*:route-table/*",
+           "arn:aws:ec2:*:*:internet-gateway/*",
+           "arn:aws:ec2:*:*:vpc-endpoint/*"
+         ],
+         "Condition": {
+           "StringEquals": { "aws:ResourceTag/Environment": "<environment>" }
+         }
+       },
        {
          "Sid": "EcrPushPull",
          "Effect": "Allow",
          "Action": ["ecr:*"],
          "Resource": "arn:aws:ecr:*:*:repository/*-<environment>"
+       },
+       {
+         "Sid": "EcrAuth",
+         "Effect": "Allow",
+         "Action": ["ecr:GetAuthorizationToken"],
+         "Resource": "*"
+       },
+       {
+         "Sid": "EcrPullThroughCache",
+         "Effect": "Allow",
+         "Action": [
+           "ecr:CreatePullThroughCacheRule", "ecr:DescribePullThroughCacheRules", "ecr:DeletePullThroughCacheRule"
+         ],
+         "Resource": "*"
+       },
+       {
+         "Sid": "EcsTaskDefinition",
+         "Effect": "Allow",
+         "Action": ["ecs:RegisterTaskDefinition", "ecs:DeregisterTaskDefinition"],
+         "Resource": "*"
        },
        {
          "Sid": "EcsDeploy",
@@ -246,23 +268,99 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
          ]
        },
        {
+         "Sid": "ElbDescribe",
+         "Effect": "Allow",
+         "Action": [
+           "elasticloadbalancing:DescribeLoadBalancers", "elasticloadbalancing:DescribeListeners",
+           "elasticloadbalancing:DescribeTargetGroups", "elasticloadbalancing:DescribeTargetHealth",
+           "elasticloadbalancing:DescribeRules", "elasticloadbalancing:DescribeTags"
+         ],
+         "Resource": "*"
+       },
+       {
          "Sid": "LoadBalancing",
          "Effect": "Allow",
          "Action": ["elasticloadbalancing:*"],
          "Resource": [
-           "arn:aws:elasticloadbalancing:*:*:loadbalancer/net/thor-<environment>-*/*",
+           "arn:aws:elasticloadbalancing:*:*:loadbalancer/net/thor-nlb-<environment>*/*",
            "arn:aws:elasticloadbalancing:*:*:targetgroup/thor-<environment>-*/*",
-           "arn:aws:elasticloadbalancing:*:*:listener/net/thor-<environment>-*/*/*"
+           "arn:aws:elasticloadbalancing:*:*:listener/net/thor-nlb-<environment>*/*/*"
          ]
        },
-       { "Sid": "ApiGateway", "Effect": "Allow", "Action": ["apigateway:*"], "Resource": "*" },
-       { "Sid": "CloudFront", "Effect": "Allow", "Action": ["cloudfront:*"], "Resource": "*" },
+       {
+         "Sid": "ApiGatewayHttpApi",
+         "Effect": "Allow",
+         "Action": ["apigateway:GET", "apigateway:POST", "apigateway:PUT", "apigateway:PATCH", "apigateway:DELETE"],
+         "Resource": [
+           "arn:aws:apigateway:*::/apis",
+           "arn:aws:apigateway:*::/apis/*",
+           "arn:aws:apigateway:*::/vpclinks",
+           "arn:aws:apigateway:*::/vpclinks/*",
+           "arn:aws:apigateway:*::/domainnames",
+           "arn:aws:apigateway:*::/domainnames/*",
+           "arn:aws:apigateway:*::/tags/*"
+         ]
+       },
+       {
+         "Sid": "CloudFrontOriginAccessControl",
+         "Effect": "Allow",
+         "Action": ["cloudfront:*OriginAccessControl*"],
+         "Resource": "*"
+       },
+       {
+         "Sid": "CloudFrontManageOwn",
+         "Effect": "Allow",
+         "Action": [
+           "cloudfront:GetDistribution", "cloudfront:GetDistributionConfig", "cloudfront:UpdateDistribution",
+           "cloudfront:DeleteDistribution", "cloudfront:CreateInvalidation", "cloudfront:ListInvalidations",
+           "cloudfront:GetInvalidation", "cloudfront:TagResource", "cloudfront:UntagResource",
+           "cloudfront:ListTagsForResource"
+         ],
+         "Resource": "*",
+         "Condition": {
+           "StringEquals": { "aws:ResourceTag/Environment": "<environment>" }
+         }
+       },
+       {
+         "Sid": "CloudFrontCreate",
+         "Effect": "Allow",
+         "Action": ["cloudfront:CreateDistribution", "cloudfront:TagResource"],
+         "Resource": "*",
+         "Condition": {
+           "StringEquals": { "aws:RequestTag/Environment": "<environment>" }
+         }
+       },
+       {
+         "Sid": "Waf",
+         "Effect": "Allow",
+         "Action": ["wafv2:*"],
+         "Resource": "arn:aws:wafv2:*:*:global/webacl/thor-<environment>-frontend-waf/*"
+       },
+       { "Sid": "Route53Dns", "Effect": "Allow", "Action": ["route53:*"], "Resource": "*" },
        { "Sid": "ServiceDiscovery", "Effect": "Allow", "Action": ["servicediscovery:*"], "Resource": "*" },
        {
          "Sid": "S3FrontendBucket",
          "Effect": "Allow",
          "Action": ["s3:*"],
-         "Resource": ["arn:aws:s3:::thor-frontend-<environment>-*", "arn:aws:s3:::thor-frontend-<environment>-*/*"]
+         "Resource": "arn:aws:s3:::thor-frontend-<environment>-*"
+       },
+       {
+         "Sid": "TerraformStateBucket",
+         "Effect": "Allow",
+         "Action": ["s3:ListBucket"],
+         "Resource": "arn:aws:s3:::thor-terraform-state-<account-id>"
+       },
+       {
+         "Sid": "TerraformStateObjects",
+         "Effect": "Allow",
+         "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+         "Resource": "arn:aws:s3:::thor-terraform-state-<account-id>/thor-<environment>/*"
+       },
+       {
+         "Sid": "KmsForManagedSecrets",
+         "Effect": "Allow",
+         "Action": ["kms:DescribeKey"],
+         "Resource": "*"
        },
        {
          "Sid": "Rds",
@@ -279,6 +377,21 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
          "Effect": "Allow",
          "Action": ["rds-data:*"],
          "Resource": "arn:aws:rds:*:*:cluster:thor-<environment>-aurora"
+       },
+       {
+         "Sid": "RdsProxy",
+         "Effect": "Allow",
+         "Action": ["rds:CreateDBProxy", "rds:ModifyDBProxy", "rds:DeleteDBProxy", "rds:DescribeDBProxies"],
+         "Resource": "arn:aws:rds:*:*:db-proxy:thor-<environment>-rds-proxy"
+       },
+       {
+         "Sid": "RdsProxyTargets",
+         "Effect": "Allow",
+         "Action": [
+           "rds:RegisterDBProxyTargets", "rds:DeregisterDBProxyTargets",
+           "rds:DescribeDBProxyTargets", "rds:DescribeDBProxyTargetGroups", "rds:ModifyDBProxyTargetGroup"
+         ],
+         "Resource": "*"
        },
        { "Sid": "SecretsManager", "Effect": "Allow", "Action": ["secretsmanager:*"], "Resource": "*" },
        {
@@ -301,6 +414,7 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
          "Effect": "Allow",
          "Action": [
            "iam:CreateRole", "iam:DeleteRole", "iam:GetRole",
+           "iam:UpdateAssumeRolePolicy",
            "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:GetRolePolicy",
            "iam:AttachRolePolicy", "iam:DetachRolePolicy",
            "iam:TagRole", "iam:UntagRole",
@@ -314,10 +428,21 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    ```
 
    **Scoped to `thor-<environment>-*`** (or a close variant): ECR, ECS,
-   load balancing, the S3 frontend bucket, RDS/RDS Data API, Lambda,
-   CloudWatch Logs, and IAM role management/`PassRole`. No S3 statement
-   for Terraform state — that lives in JFrog Artifactory (Step 2), not an
-   S3 bucket this role needs access to.
+   load balancing, the S3 frontend bucket, RDS/RDS Data API, RDS Proxy,
+   Lambda, CloudWatch Logs, WAF, and IAM role management/`PassRole`. No S3
+   statement for Terraform state — that lives in JFrog Artifactory
+   (Step 4), not an S3 bucket this role needs access to.
+
+   **`RdsProxy`'s ARN is unverified, same caveat as the ELB listener ARN
+   below**: written as `db-proxy:thor-<environment>-rds-proxy` (the
+   `db_proxy_name`), matching how its `Rds` sibling statement scopes
+   `cluster`/`db`/`subgrp` by name rather than an AWS-generated ID — but
+   unlike those, this hasn't been confirmed against AWS's own IAM
+   resource-type reference for the `rds:` (not `rds-db:`) namespace
+   specifically. If `CreateDBProxy`/etc. get denied unexpectedly, check
+   the ARN in the error message; it may need to be the `prx-<random-id>`
+   AWS assigns instead, same as the `rds-db:connect` runtime-auth ARN
+   uses (a different, already-confirmed case, not this one).
 
    **Left as `Resource: "*"` on purpose, not by oversight:**
    - **EC2** — VPC/subnet/security-group IDs (`vpc-xxxxx`) are AWS-random,
@@ -330,6 +455,23 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    - **API Gateway**, **CloudFront**, **Service Discovery** — all use
      AWS-random IDs in their ARNs (REST API ID, distribution ID,
      namespace/service ID), never the `thor-<environment>-*` name itself.
+   - **Route53** — the hosted zone (`aws_route53_zone`, for the TLS
+     sidecar's Let's Encrypt DNS-01 challenge) gets an AWS-random zone ID
+     (`Z0953...`), not a name-derived one; the domain name itself
+     (`cndemo.com`) isn't part of the zone's ARN at all. Also covers the
+     ACME provider's own DNS-01 record management (`ChangeResourceRecordSets`
+     etc.), which targets that same unscoped zone ARN.
+   - **ECR pull-through cache rule management** (`CreatePullThroughCacheRule`/
+     `DescribePullThroughCacheRules`/`DeletePullThroughCacheRule`, used to
+     mirror the TLS sidecar's `nginx` base image from `public.ecr.aws`
+     since this VPC has no NAT Gateway route to reach it directly) — these
+     specific actions don't support resource-level permissions in IAM at
+     all, unlike ordinary repository push/pull. The repositories the cache
+     rule actually populates *are* ARN-scoped, but that's a separate
+     concern from managing the rule resource itself — see
+     `modules/ecs/tls_sidecar.tf`'s own IAM policy for the ECS execution
+     role's `ecr:CreateRepository`/`BatchImportUpstreamImage` grant, scoped
+     to `repository/ecr-public/*`, which is a different role than this one.
    - **Secrets Manager** — the Aurora master secret's ID is auto-generated
      by AWS (`rds!cluster-<random-uuid>`) when using
      `manage_master_user_password`, never derived from the naming
@@ -344,19 +486,44 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    simply missing.
 
 7. Name the role (`deploy-dev`/`deploy-qa`/`deploy-prod`) and copy its
-   **ARN** — needed in Step 5.
+   **ARN** — needed in Step 4.
 
-## Step 5: Set the repo-level variables
+## Step 4: Set the repo-level variables and secrets
 
-**Repo → Settings → Secrets and variables → Actions → Variables** (repo
-level, not environment level):
+Variables (**Repo → Settings → Secrets and variables → Actions →
+Variables**):
 
-- `DEV_AWS_ROLE_ARN` = `deploy-dev`'s ARN
-- `QA_AWS_ROLE_ARN` = `deploy-qa`'s ARN
-- `PROD_AWS_ROLE_ARN` = `deploy-prod`'s ARN
-- `AWS_REGION` (optional — defaults to `us-east-1` if unset)
+- `DEV_AWS_ROLE_ARN`, `QA_AWS_ROLE_ARN`, `PROD_AWS_ROLE_ARN` — the three
+  role ARNs
+- `AWS_REGION` (optional, defaults to `us-east-1`)
+- `JFROG_HOSTNAME` — Terraform remote backend hostname
+- `JFROG_STATE_BACKEND_REPOSITORY` — backend organization; state lives in
+  `thor-<environment>` workspaces
+- `jf_usr_thor` — JFrog username (→ `JFROG_USERNAME`)
+- `JFROG_LAMBDA_ARTIFACTS_REPOSITORY` — Lambda build cache repo
+- `JFROG_DOCKER_REPOSITORY` — not read by `infra.yml`; it's the backend
+  deploy pipeline's (`_deploy-core.yml`, on `feature/thor-73-backend-pipeline`,
+  not yet merged) Docker repo — its `dev` job builds/pushes
+  `<JFROG_HOSTNAME>/<JFROG_DOCKER_REPOSITORY>/<service>:<sha>`. Listed
+  here since it's configured in the same place.
 
-## Step 6: Configure the `dev`/`qa`/`prod` GitHub Environments
+Secrets:
+
+- `jf_api_thor` — JFrog access token, used as both
+  `TF_TOKEN_sphereco_jfrog_io` and `JFROG_ACCESS_TOKEN`
+
+`root.hcl`'s `jfrog_hostname`/`repo_name` locals read `JFROG_HOSTNAME`/
+`JFROG_STATE_BACKEND_REPOSITORY` via `get_env()` with **no fallback
+default** — both are required, or every `terragrunt` command (plan,
+apply, init, validate, destroy) fails immediately at the locals-eval step
+with `EnvVarNotFoundError`. For **local** runs, export them yourself
+first:
+```
+export JFROG_HOSTNAME=sphereco.jfrog.io
+export JFROG_STATE_BACKEND_REPOSITORY=terraform-state-local
+```
+
+## Step 5: Configure the `dev`/`qa`/`prod` GitHub Environments
 
 These are the **same** Environments the backend deploy pipeline already
 needs — no infra-specific Environments to create.
@@ -368,14 +535,13 @@ needs — no infra-specific Environments to create.
    automatically there, it just runs under a real Environment now
    instead of none at all.
 4. No `AWS_ROLE_ARN` variable needed on any of the three Environments for
-   infra's sake — `infra.yml` reads the repo-level variables from Step 5
+   infra's sake — `infra.yml` reads the repo-level variables from Step 4
    regardless of which Environment a job is running under.
 
 ## Verifying it works
 
-Open a PR that touches something under `infra/**` targeting `dev`. You
-should see `init-terragrunt` → `validate-terragrunt` (includes `hcl fmt`
-+ `tflint`) → `plan-terragrunt` run and post a plan as a PR comment, with
-no AWS credential errors. Merging (or pushing directly to `dev`) should
-then run `apply-terragrunt` automatically — for `qa`/`prod`, that job
-pauses for a required reviewer's approval before applying.
+Open a PR touching `infra/**` or `backend/functions/**` targeting `dev`.
+You should see `validate-terragrunt` (runs `terragrunt init` internally,
+then `hcl fmt` + `tflint`) → `plan-terragrunt` post a plan comment with no
+AWS credential errors. Merging should then run `apply-terragrunt`
+automatically for `dev` — `qa`/`prod` pause for reviewer approval.

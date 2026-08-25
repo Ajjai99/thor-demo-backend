@@ -83,3 +83,8 @@ output "frontend_distribution_id" {
 output "frontend_distribution_domain_name" {
   value = var.enable_frontend ? module.frontend[0].distribution_domain_name : null
 }
+
+output "acme_server_url" {
+  description = "ACME directory this environment issues the TLS sidecar cert from — confirm this is the production endpoint, not Let's Encrypt staging, before relying on the cert being publicly trusted"
+  value       = var.acme_server_url
+}

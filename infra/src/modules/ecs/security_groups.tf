@@ -2,8 +2,11 @@
 resource "aws_security_group" "service" {
   for_each = local.active_services
 
-  name        = "${local.name_prefix[each.key]}-service-sg"
-  description = each.value.expose_publicly ? "ECS service ingress from within the VPC (NLB target, NLB has no SG), egress open (no NAT/IGW route today, so this only reaches the VPC + endpoints in practice)" : "ECS service ingress restricted to public-facing peer services only, egress open (no NAT/IGW route today, so this only reaches the VPC + endpoints in practice)"
+  name = "${local.name_prefix[each.key]}-service-sg"
+  # description is ForceNew on aws_security_group and other resources reference this SG's id — changing this text
+  # forces a destroy+recreate that can deadlock against those references (see security_groups.tf history). Left
+  # matching what's already live in AWS; update only alongside a deliberate, planned replacement of this SG.
+  description = each.value.expose_via_nlb ? "ECS service ingress from within the VPC (NLB target, NLB has no SG), egress open (no NAT/IGW route today, so this only reaches the VPC + endpoints in practice)" : "ECS service ingress restricted to public-facing peer services only, egress open (no NAT/IGW route today, so this only reaches the VPC + endpoints in practice)"
   vpc_id      = var.vpc_id
 
   # 0.0.0.0/0, not var.vpc_cidr — no NAT/IGW route yet, so this only widens the boundary, not actual reachability.
@@ -25,16 +28,16 @@ resource "aws_security_group" "service" {
   }
 }
 
-# Public-facing services: ingress from anywhere in the VPC — the NLB has no SG, so this is effectively "from the NLB."
+# Public-facing services: ingress from the NLB's own security group only — not the whole VPC CIDR.
 resource "aws_vpc_security_group_ingress_rule" "public_from_vpc" {
   for_each = local.public_services
 
-  security_group_id = aws_security_group.service[each.key].id
-  description       = "From within the VPC"
-  from_port         = each.value.container_port
-  to_port           = each.value.container_port
-  ip_protocol       = "tcp"
-  cidr_ipv4         = var.vpc_cidr
+  security_group_id            = aws_security_group.service[each.key].id
+  description                  = "From the NLB, to the TLS sidecar"
+  from_port                    = local.sidecar_port[each.key]
+  to_port                      = local.sidecar_port[each.key]
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.nlb[each.key].id
 
   tags = var.tags
 }
@@ -42,7 +45,7 @@ resource "aws_vpc_security_group_ingress_rule" "public_from_vpc" {
 # Internal services: ingress from each public peer's own SG, merged across every non-public × public pair.
 resource "aws_vpc_security_group_ingress_rule" "internal_from_public_peers" {
   for_each = merge([
-    for svc_key, svc in local.active_services : svc.expose_publicly ? {} : {
+    for svc_key, svc in local.active_services : svc.expose_via_nlb ? {} : {
       for peer_key in keys(local.public_services) : "${svc_key}-from-${peer_key}" => {
         service = svc_key
         peer    = peer_key

@@ -9,6 +9,15 @@ resource "aws_apigatewayv2_integration" "proxy" {
   connection_id          = aws_apigatewayv2_vpc_link.thor-apigw-vpclink.id
   integration_uri        = var.nlb_listener_arn
   payload_format_version = "1.0"
+
+  # NLB stays TCP passthrough — this is what tells API Gateway to speak TLS to whatever's actually listening on
+  # the other end (the sidecar, always present — see ecs module's tls_sidecar.tf). The sidecar's cert is issued by
+  # Let's Encrypt (infra/src/tls_certificate.tf) specifically because it must chain to a public CA — HTTP API's
+  # tls_config has no override for a private/self-signed cert (confirmed: insecureSkipVerification doesn't exist
+  # for HTTP API integrations at all, only REST APIs).
+  tls_config {
+    server_name_to_verify = var.tls_server_name
+  }
 }
 
 resource "aws_apigatewayv2_route" "proxy_root_get" {
