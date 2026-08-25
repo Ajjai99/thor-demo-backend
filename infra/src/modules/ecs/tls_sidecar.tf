@@ -6,7 +6,9 @@ locals {
   # — the sidecar takes a new port instead, and becomes the one the NLB/API Gateway actually reach.
   sidecar_port = { for k, v in local.tls_sidecar_services : k => v.container_port + 1 }
 
-  nginx_sidecar_image = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.region}.amazonaws.com/${aws_ecr_pull_through_cache_rule.nginx[0].ecr_repository_prefix}/nginx/nginx:1.27-alpine"
+  # Guarded the same way as the resource's own count — nginx[0] doesn't exist when tls_sidecar_services is empty,
+  # and this local is evaluated unconditionally by Terraform regardless of whether anything ends up reading it.
+  nginx_sidecar_image = length(local.tls_sidecar_services) > 0 ? "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.region}.amazonaws.com/${aws_ecr_pull_through_cache_rule.nginx[0].ecr_repository_prefix}/nginx/nginx:1.27-alpine" : null
 }
 
 data "aws_caller_identity" "current" {}
