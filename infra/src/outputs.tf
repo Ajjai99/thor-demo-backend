@@ -48,7 +48,7 @@ output "thor_nlb_dns_name" {
 }
 
 output "api_gateway_invoke_url" {
-  description = "Default execute-api invoke URL — no custom domain yet, and no Cognito/Lambda authorizer attached (open access, see modules/api_gateway/integration.tf)"
+  description = "Default execute-api invoke URL — no custom domain yet. Always locked behind the Lambda API-key authorizer."
   value       = var.enable_compute ? module.api_gateway[0].invoke_url : null
 }
 
@@ -68,6 +68,21 @@ output "task_execution_role_arns" {
 output "task_role_arns" {
   description = "Map of service name -> task role ARN — used to attach least-privilege DB/Bedrock policies per service without touching this module."
   value       = module.ecs.task_role_arns
+}
+
+output "route53_zone_ids" {
+  description = "Map of zone name -> hosted zone ID, for every zone in hosted_zones"
+  value       = var.enable_route53 ? module.route53[0].zone_ids : null
+}
+
+output "route53_name_servers" {
+  description = "Map of zone name -> its 4 name servers, for zones this created. Hand the relevant entry to whoever owns that zone's parent domain to add as an NS delegation record."
+  value       = var.enable_route53 ? module.route53[0].name_servers : null
+}
+
+output "route53_certificate_arns" {
+  description = "Map of certificate logical name (\"<zone_key>/<cert_key>\" from hosted_zones) -> validated ARN"
+  value       = var.enable_route53 ? module.acm[0].certificate_arns : null
 }
 
 output "frontend_bucket_name" {

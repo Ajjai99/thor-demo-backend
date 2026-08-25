@@ -19,8 +19,8 @@ resource "aws_apigatewayv2_route" "proxy_root_get" {
   route_key = "GET /"
   target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
 
-  authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"
-  authorizer_id      = var.enable_authorizer ? aws_apigatewayv2_authorizer.thor-api-key[0].id : null
+  authorization_type = "CUSTOM"
+  authorizer_id      = aws_apigatewayv2_authorizer.thor-api-key.id
 }
 
 resource "aws_apigatewayv2_route" "proxy_root_post" {
@@ -28,8 +28,8 @@ resource "aws_apigatewayv2_route" "proxy_root_post" {
   route_key = "POST /"
   target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
 
-  authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"
-  authorizer_id      = var.enable_authorizer ? aws_apigatewayv2_authorizer.thor-api-key[0].id : null
+  authorization_type = "CUSTOM"
+  authorizer_id      = aws_apigatewayv2_authorizer.thor-api-key.id
 }
 
 resource "aws_apigatewayv2_route" "proxy_get" {
@@ -37,8 +37,8 @@ resource "aws_apigatewayv2_route" "proxy_get" {
   route_key = "GET /{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
 
-  authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"
-  authorizer_id      = var.enable_authorizer ? aws_apigatewayv2_authorizer.thor-api-key[0].id : null
+  authorization_type = "CUSTOM"
+  authorizer_id      = aws_apigatewayv2_authorizer.thor-api-key.id
 }
 
 resource "aws_apigatewayv2_route" "proxy_post" {
@@ -46,6 +46,6 @@ resource "aws_apigatewayv2_route" "proxy_post" {
   route_key = "POST /{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.proxy.id}"
 
-  authorization_type = var.enable_authorizer ? "CUSTOM" : "NONE"
-  authorizer_id      = var.enable_authorizer ? aws_apigatewayv2_authorizer.thor-api-key[0].id : null
+  authorization_type = "CUSTOM"
+  authorizer_id      = aws_apigatewayv2_authorizer.thor-api-key.id
 }

@@ -89,7 +89,7 @@ resource "aws_lambda_function" "thor-authorizer-lambda" {
     variables = {
       AURORA_CLUSTER_ARN             = var.aurora_cluster_arn
       AURORA_SECRET_ARN              = var.aurora_secret_arn
-      AURORA_DATABASE_NAME           = var.aurora_database_name
+      MASTER_DB_NAME                 = var.aurora_database_name
       THOR_AUTHORIZER_SALT_SECRET_ID = var.authorizer_salt_secret_arn
     }
   }

@@ -78,9 +78,38 @@ inputs = {
     }
   }
 
+  # --- route53 + acm (hosted zones with their certificates nested) ---
+  enable_route53 = true
+
+  hosted_zones = {
+    # Apex zone — no certificates of its own, exists only so the "dev" NS
+    # delegation record (added manually below, same as SPHERE IT would for
+    # real) has somewhere to live.
+    apex = {
+      zone_name    = "cndemo.com" # Dev
+      certificates = {}
+    }
+
+    thor = {
+      zone_name = "dev.cndemo.com"
+      certificates = {
+        frontend = {
+          domain_name = "dev.cndemo.com"
+        }
+        api_gateway = {
+          domain_name = "api.dev.cndemo.com"
+        }
+      }
+    }
+  }
+
   # --- frontend (static SPA: S3 + CloudFront) ---
-  enable_frontend      = true
-  frontend_price_class = "PriceClass_100"
+  enable_frontend          = true
+  frontend_price_class     = "PriceClass_100"
+  frontend_certificate_key = "thor/frontend"
+
+  # --- api gateway custom domain ---
+  api_gateway_certificate_key = "thor/api_gateway"
 
   # --- database (Aurora PostgreSQL, task-api's) ---
   # Low capacity + no deletion protection — dev is throwaway, cost-optimized.
@@ -92,12 +121,6 @@ inputs = {
   aurora_backup_retention_days = 7
   aurora_deletion_protection   = true
   aurora_skip_final_snapshot   = true
-
-  # --- rds proxy ---
-  enable_rds_proxy = true
-
-  # --- api gateway authorizer ---
-  enable_authorizer = true
 
   # --- lambda authorizer ---
   authorizer_lambda_runtime     = "dotnet10"

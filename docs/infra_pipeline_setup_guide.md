@@ -328,6 +328,18 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
          "Action": ["wafv2:*"],
          "Resource": "arn:aws:wafv2:*:*:global/webacl/thor-<environment>-frontend-waf/*"
        },
+       {
+         "Sid": "Acm",
+         "Effect": "Allow",
+         "Action": [
+           "acm:RequestCertificate", "acm:DescribeCertificate", "acm:DeleteCertificate",
+           "acm:AddTagsToCertificate", "acm:RemoveTagsFromCertificate", "acm:ListTagsForCertificate",
+           "acm:TagResource", "acm:UntagResource", "acm:ListTagsForResource"
+         ],
+         "Resource": "arn:aws:acm:*:*:certificate/*"
+       },
+       { "Sid": "AcmList", "Effect": "Allow", "Action": ["acm:ListCertificates"], "Resource": "*" },
+       { "Sid": "Route53Dns", "Effect": "Allow", "Action": ["route53:*"], "Resource": "*" },
        { "Sid": "ServiceDiscovery", "Effect": "Allow", "Action": ["servicediscovery:*"], "Resource": "*" },
        {
          "Sid": "S3FrontendBucket",
@@ -446,6 +458,17 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    - **API Gateway**, **CloudFront**, **Service Discovery** — all use
      AWS-random IDs in their ARNs (REST API ID, distribution ID,
      namespace/service ID), never the `thor-<environment>-*` name itself.
+   - **Route53** — hosted zone IDs (`Z0953...`) are AWS-random, not
+     name-derived; the domain name itself never appears in the zone's ARN.
+     Used by `modules/route53` (zone create/lookup) and `modules/acm`'s
+     validation records, plus the frontend/api_gateway custom-domain alias
+     records.
+   - **ACM's `ListCertificates`** (separate `AcmList` statement) — confirmed
+     via AWS's own ACM API permissions reference that this specific action
+     requires bare `Resource: "*"`, unlike every other ACM action used here
+     (`RequestCertificate`/`DescribeCertificate`/`DeleteCertificate`/tagging),
+     which do support `certificate/*` (ID-wildcarded) scoping — kept in the
+     main `Acm` statement.
    - **Secrets Manager** — the Aurora master secret's ID is auto-generated
      by AWS (`rds!cluster-<random-uuid>`) when using
      `manage_master_user_password`, never derived from the naming

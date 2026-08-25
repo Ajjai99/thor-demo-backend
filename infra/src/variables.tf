@@ -124,6 +124,32 @@ variable "tags" {
   default     = {}
 }
 
+# --- route53 + acm (dynamic hosted zones and certificates) ---
+# Off by default until domain names are confirmed and any delegation they
+# need (e.g. SPHERE IT adding an NS record for a subdomain) is actually in
+# place.
+
+variable "enable_route53" {
+  type        = bool
+  description = "Whether to create this env's hosted zones + ACM certificates. Leave false until domain names are confirmed and delegated."
+  default     = false
+}
+
+variable "hosted_zones" {
+  description = "Hosted zones and their ACM certificates, nested together for readability. Keyed by an arbitrary logical name (not the domain itself — that's zone_name). Each zone's certificates map is in turn keyed by its own arbitrary logical name, scoped to that zone, so short names like \"api\" can repeat across different zones without colliding. Flattened into modules/route53 + modules/acm's flat shapes inside main.tf — this nesting is purely a root-level ergonomic choice, not something either module needs to know about. Unused while enable_route53 is false."
+  type = map(object({
+    zone_name   = string
+    create_zone = optional(bool, true)
+    comment     = optional(string, "")
+    tags        = optional(map(string), {})
+    certificates = map(object({
+      domain_name               = string
+      subject_alternative_names = optional(list(string), [])
+    }))
+  }))
+  default = {}
+}
+
 # --- frontend (static SPA: S3 + CloudFront) ---
 
 variable "enable_frontend" {
@@ -138,13 +164,19 @@ variable "frontend_price_class" {
   default     = "PriceClass_100"
 }
 
-# --- api gateway authorizer (Lambda, validates connector API keys against Aurora) ---
-
-variable "enable_authorizer" {
-  type        = bool
-  description = "Locks the API Gateway proxy behind the Lambda API-key authorizer instead of leaving it open (authorization = NONE). Off by default until real authorizer code and seeded API keys exist."
-  default     = false
+variable "frontend_certificate_key" {
+  type        = string
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/frontend\") the frontend distribution's custom domain + cert come from. \"\" (default) leaves the frontend on CloudFront's default certificate, no alias record created."
+  default     = ""
 }
+
+variable "api_gateway_certificate_key" {
+  type        = string
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/api_gateway\") the API's custom domain + cert come from. \"\" (default) leaves the API reachable only via its default execute-api URL, no custom domain mapping created."
+  default     = ""
+}
+
+# --- api gateway authorizer (Lambda, validates connector API keys against Aurora) ---
 
 variable "authorizer_lambda_runtime" {
   type        = string
@@ -218,14 +250,6 @@ variable "aurora_skip_final_snapshot" {
   type        = bool
   default     = true
   description = "Should be false for prod, true for throwaway dev/qa environments"
-}
-
-# --- rds proxy (module.rds_proxy, connection pooling in front of Aurora) ---
-
-variable "enable_rds_proxy" {
-  type        = bool
-  description = "Whether to create the RDS Proxy in front of Aurora"
-  default     = false
 }
 
 # Future modules' variables go here.

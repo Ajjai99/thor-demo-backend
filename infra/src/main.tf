@@ -29,8 +29,7 @@ locals {
   # The one service with expose_via_nlb = true.
   public_service_name = [for k, v in var.services : k if v.expose_via_nlb][0]
 
-  # Proxy endpoint when enabled, Aurora's own endpoint otherwise.
-  db_host = var.enable_rds_proxy ? module.rds_proxy[0].endpoint : module.aurora.endpoint
+  db_host = module.rds_proxy.endpoint
 
   # Shared Aurora connection info, merged into thor-api/task-api only (service-specific values stay in terragrunt.hcl).
   services_with_shared_secrets = {
@@ -67,6 +66,75 @@ module "ecs" {
   tags = var.tags
 }
 
+locals {
+  # var.hosted_zones nests certificates under their zone for readability in
+  # terragrunt.hcl — modules/route53 and modules/acm both stay flat and
+  # generic, so this flattening happens here, once, at the boundary.
+
+  # zones map for modules/route53: keyed by the real domain name (zone_name),
+  # not hosted_zones' own logical keys.
+  route53_zones = {
+    for zone_key, zone in var.hosted_zones : zone.zone_name => {
+      create_zone = zone.create_zone
+      comment     = zone.comment
+      tags        = zone.tags
+    }
+  }
+
+  # Every certificate across every zone, flattened into one map. Keyed by
+  # "<zone_key>/<cert_key>" so short, repeated cert names (e.g. "api" in two
+  # different zones) never collide once flattened. zone_name rides along on
+  # each entry so the zone_id lookup below knows which zone to resolve.
+  route53_certificates_flat = merge([
+    for zone_key, zone in var.hosted_zones : {
+      for cert_key, cert in zone.certificates : "${zone_key}/${cert_key}" => merge(cert, {
+        zone_name = zone.zone_name
+      })
+    }
+  ]...)
+}
+
+module "route53" {
+  count = var.enable_route53 ? 1 : 0
+
+  source = "./modules/route53"
+
+  zones = local.route53_zones
+  tags  = var.tags
+}
+
+module "acm" {
+  count = var.enable_route53 ? 1 : 0
+
+  source = "./modules/acm"
+
+  certificates = {
+    for key, cert in local.route53_certificates_flat : key => merge(cert, {
+      zone_id = module.route53[0].zone_ids[cert.zone_name]
+    })
+  }
+
+  tags = var.tags
+}
+
+locals {
+  # "" until enable_route53 is on and frontend_certificate_key actually
+  # points at an entry — keeps module.frontend's domain_name/etc. defaulted
+  # to "" (its own "no custom domain" fallback) rather than erroring.
+  frontend_route53 = var.enable_route53 && var.frontend_certificate_key != "" ? {
+    domain_name     = local.route53_certificates_flat[var.frontend_certificate_key].domain_name
+    certificate_arn = module.acm[0].certificate_arns[var.frontend_certificate_key]
+    zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.frontend_certificate_key].zone_name]
+  } : null
+
+  # Same pattern as frontend_route53 above, for api_gateway's custom domain mapping.
+  api_gateway_route53 = var.enable_route53 && var.api_gateway_certificate_key != "" ? {
+    domain_name     = local.route53_certificates_flat[var.api_gateway_certificate_key].domain_name
+    certificate_arn = module.acm[0].certificate_arns[var.api_gateway_certificate_key]
+    zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.api_gateway_certificate_key].zone_name]
+  } : null
+}
+
 # Private S3 + CloudFront for the frontend SPA.
 module "frontend" {
   count = var.enable_frontend ? 1 : 0
@@ -75,6 +143,10 @@ module "frontend" {
 
   environment = var.environment
   price_class = var.frontend_price_class
+
+  domain_name         = local.frontend_route53 != null ? local.frontend_route53.domain_name : ""
+  acm_certificate_arn = local.frontend_route53 != null ? local.frontend_route53.certificate_arn : ""
+  zone_id             = local.frontend_route53 != null ? local.frontend_route53.zone_id : ""
 
   tags = var.tags
 }
@@ -91,17 +163,18 @@ module "api_gateway" {
   vpc_id             = local.vpc_id
   private_subnet_ids = local.private_subnet_ids
 
-  enable_authorizer               = var.enable_authorizer
-  authorizer_lambda_invoke_arn    = var.enable_authorizer ? module.lambda[0].lambda_invoke_arn : ""
-  authorizer_lambda_function_name = var.enable_authorizer ? module.lambda[0].lambda_function_name : ""
+  authorizer_lambda_invoke_arn    = module.lambda.lambda_invoke_arn
+  authorizer_lambda_function_name = module.lambda.lambda_function_name
+
+  domain_name         = local.api_gateway_route53 != null ? local.api_gateway_route53.domain_name : ""
+  acm_certificate_arn = local.api_gateway_route53 != null ? local.api_gateway_route53.certificate_arn : ""
+  zone_id             = local.api_gateway_route53 != null ? local.api_gateway_route53.zone_id : ""
 
   tags = var.tags
 }
 
 # Salt for Thor.Authorizer's PBKDF2 API-key hashing — value set out-of-band, not by Terraform.
 module "secrets" {
-  count = var.enable_authorizer ? 1 : 0
-
   source = "./modules/secrets"
 
   environment = var.environment
@@ -110,8 +183,6 @@ module "secrets" {
 
 # Validates API keys against Aurora via RDS Data API — no VPC needed.
 module "lambda" {
-  count = var.enable_authorizer ? 1 : 0
-
   source = "./modules/lambda"
 
   environment          = var.environment
@@ -119,7 +190,7 @@ module "lambda" {
   aurora_secret_arn    = module.aurora.master_user_secret_arn
   aurora_database_name = module.aurora.database_name
 
-  authorizer_salt_secret_arn = module.secrets[0].authorizer_salt_secret_arn
+  authorizer_salt_secret_arn = module.secrets.authorizer_salt_secret_arn
 
   runtime               = var.authorizer_lambda_runtime
   timeout               = var.authorizer_lambda_timeout
@@ -138,9 +209,9 @@ module "aurora" {
   vpc_cidr           = local.vpc_cidr_effective
   private_subnet_ids = local.private_subnet_ids
   # Only the proxy reaches Aurora directly — thor-api/task-api go through it, not around it.
-  allowed_security_group_ids = var.enable_rds_proxy ? {
-    rds-proxy = module.rds_proxy[0].rds_proxy_security_group_id
-  } : {}
+  allowed_security_group_ids = {
+    rds-proxy = module.rds_proxy.rds_proxy_security_group_id
+  }
 
   database_name         = var.aurora_database_name
   master_username       = var.aurora_master_username
@@ -156,8 +227,6 @@ module "aurora" {
 
 # Connection pooling in front of Aurora — thor-api/task-api connect here instead of Aurora's own endpoint.
 module "rds_proxy" {
-  count = var.enable_rds_proxy ? 1 : 0
-
   source = "./modules/rds_proxy"
 
   environment        = var.environment

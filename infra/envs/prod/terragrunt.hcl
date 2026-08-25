@@ -74,9 +74,19 @@ inputs = {
     }
   }
 
+  # --- route53 + acm (hosted zones with their certificates nested) ---
+  # Prod's domain is a fully separate decision from dev/qa's cndemo.com —
+  # still unconfirmed, so left empty rather than guessed.
+  enable_route53 = false
+  hosted_zones   = {}
+
   # --- frontend (static SPA: S3 + CloudFront) ---
-  enable_frontend      = true
-  frontend_price_class = "PriceClass_100"
+  enable_frontend          = true
+  frontend_price_class     = "PriceClass_100"
+  frontend_certificate_key = ""
+
+  # --- api gateway custom domain ---
+  api_gateway_certificate_key = ""
 
   # --- database (Aurora PostgreSQL, task-api's) ---
   # Deletion protection on, real final snapshot kept, longer backup retention than dev — prod is not disposable. min/max_capacity are a starting guess, not tuned against real traffic yet.
@@ -88,12 +98,6 @@ inputs = {
   aurora_backup_retention_days = 30
   aurora_deletion_protection   = true
   aurora_skip_final_snapshot   = false
-
-  # --- rds proxy ---
-  enable_rds_proxy = true
-
-  # --- api gateway authorizer ---
-  enable_authorizer = true
 
   # --- lambda authorizer ---
   authorizer_lambda_runtime     = "dotnet10"

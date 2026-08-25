@@ -88,9 +88,41 @@ inputs = {
     }
   }
 
+  # --- route53 + acm (hosted zones with their certificates nested) ---
+  # Off until dev's apply has actually created cndemo.com's zone — apex
+  # below is a lookup (create_zone = false), not a create, so it 404s until
+  # then. Turn this on once that's confirmed live.
+  enable_route53 = false
+
+  hosted_zones = {
+    # Same apex zone dev creates — looked up here, not created, so this
+    # doesn't fight dev over who owns cndemo.com.
+    apex = {
+      zone_name    = "cndemo.com"
+      create_zone  = false
+      certificates = {}
+    }
+
+    thor = {
+      zone_name = "qa.cndemo.com"
+      certificates = {
+        frontend = {
+          domain_name = "qa.cndemo.com"
+        }
+        api_gateway = {
+          domain_name = "api.qa.cndemo.com"
+        }
+      }
+    }
+  }
+
   # --- frontend (static SPA: S3 + CloudFront) ---
-  enable_frontend      = true
-  frontend_price_class = "PriceClass_100"
+  enable_frontend          = true
+  frontend_price_class     = "PriceClass_100"
+  frontend_certificate_key = "thor/frontend"
+
+  # --- api gateway custom domain ---
+  api_gateway_certificate_key = "thor/api_gateway"
 
   # --- database (Aurora PostgreSQL, task-api's) ---
   aurora_database_name         = "thor_qa_db"
@@ -101,12 +133,6 @@ inputs = {
   aurora_backup_retention_days = 7
   aurora_deletion_protection   = true
   aurora_skip_final_snapshot   = true
-
-  # --- rds proxy ---
-  enable_rds_proxy = true
-
-  # --- api gateway authorizer ---
-  enable_authorizer = true
 
   # --- lambda authorizer ---
   authorizer_lambda_runtime     = "dotnet10"
