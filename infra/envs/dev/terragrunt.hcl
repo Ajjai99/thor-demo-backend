@@ -27,7 +27,7 @@ inputs = {
       # Pinned to a real, existing tag — this repo's ECR has no "latest", so container_image = "" (its normal
       # fallback) would reference an image that doesn't exist. Needed for this apply since task_definition is
       # temporarily un-ignored on the ECS service (see services.tf) and would otherwise push a broken revision.
-      container_image        = "877969058937.dkr.ecr.us-east-1.amazonaws.com/thor-api-dev:eb9c39f998a0d3f6c0b4dce994b493a233f34744"
+      container_image        = ""
       container_port         = 8080
       cpu                    = 512  # 0.5 vCPU
       memory                 = 1024 # 1 GB
