@@ -42,6 +42,11 @@ resource "aws_vpc" "thor-vpc" {
   tags = merge(var.tags, {
     Name = "${local.name_prefix}-vpc"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_internet_gateway" "thor-igw" {
@@ -50,6 +55,11 @@ resource "aws_internet_gateway" "thor-igw" {
   tags = merge(var.tags, {
     Name = "${local.name_prefix}-igw"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # Public subnets — ALB + WAF at the edge only, per the platform's ingress design
@@ -64,6 +74,11 @@ resource "aws_subnet" "public" {
     Name = "${local.name_prefix}-public-${local.azs[count.index]}"
     Tier = "public"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # Private subnets — ECS Fargate tasks, Aurora / RDS Proxy, Graph DB
@@ -77,6 +92,11 @@ resource "aws_subnet" "private" {
     Name = "${local.name_prefix}-private-${local.azs[count.index]}"
     Tier = "private"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_route_table" "public" {
@@ -90,6 +110,11 @@ resource "aws_route_table" "public" {
   tags = merge(var.tags, {
     Name = "${local.name_prefix}-public-rt"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_route_table_association" "public" {
@@ -105,6 +130,11 @@ resource "aws_route_table" "private" {
   tags = merge(var.tags, {
     Name = "${local.name_prefix}-private-rt"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_route_table_association" "private" {
@@ -138,6 +168,11 @@ resource "aws_security_group" "vpc_endpoints" {
   tags = merge(var.tags, {
     Name = "${local.name_prefix}-vpce-sg"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # S3 gateway endpoint — no hourly/data cost, used for ECR image layers, Terraform state, etc.
@@ -151,6 +186,11 @@ resource "aws_vpc_endpoint" "s3" {
   tags = merge(var.tags, {
     Name = "${local.name_prefix}-s3-endpoint"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_vpc_endpoint" "interface" {
@@ -165,4 +205,9 @@ resource "aws_vpc_endpoint" "interface" {
   tags = merge(var.tags, {
     Name = "${local.name_prefix}-${each.value}-endpoint"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }

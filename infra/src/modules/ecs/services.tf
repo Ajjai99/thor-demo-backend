@@ -86,6 +86,11 @@ resource "aws_ecs_task_definition" "thor-svc-taskdef" {
   ])
 
   tags = var.tags
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_ecs_service" "thor-svc" {

@@ -28,6 +28,11 @@ resource "aws_lb_target_group" "thor-nlb-tg-blue" {
   }
 
   tags = var.tags
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_lb_target_group" "thor-nlb-tg-green" {
@@ -48,6 +53,11 @@ resource "aws_lb_target_group" "thor-nlb-tg-green" {
   }
 
   tags = var.tags
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # SGs attach to an NLB only at creation, so wiring this in forces a replace of aws_lb.thor-nlb below.
@@ -79,6 +89,11 @@ resource "aws_vpc_security_group_ingress_rule" "nlb_from_vpc" {
   cidr_ipv4         = var.vpc_cidr
 
   tags = var.tags
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nlb_test_from_vpc" {
@@ -92,6 +107,11 @@ resource "aws_vpc_security_group_ingress_rule" "nlb_test_from_vpc" {
   cidr_ipv4         = var.vpc_cidr
 
   tags = var.tags
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_vpc_security_group_egress_rule" "nlb_to_vpc" {
@@ -103,6 +123,11 @@ resource "aws_vpc_security_group_egress_rule" "nlb_to_vpc" {
   cidr_ipv4         = var.vpc_cidr
 
   tags = var.tags
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # Internal — reached via VPC Link from API Gateway, not directly from the internet. name is thor-nlb-<environment>,
@@ -142,8 +167,9 @@ resource "aws_lb_listener" "thor-nlb-listener" {
     target_group_arn = aws_lb_target_group.thor-nlb-tg-blue[each.key].arn
   }
 
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
-    ignore_changes = [default_action]
+    ignore_changes = [default_action, tags, tags_all]
   }
 
   tags = var.tags
@@ -167,8 +193,9 @@ resource "aws_lb_listener" "thor-nlb-test-listener" {
     target_group_arn = aws_lb_target_group.thor-nlb-tg-blue[each.key].arn
   }
 
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
-    ignore_changes = [default_action]
+    ignore_changes = [default_action, tags, tags_all]
   }
 
   tags = var.tags
@@ -192,6 +219,11 @@ resource "aws_iam_role" "blue_green" {
   name               = "${local.name_prefix[each.key]}-bluegreen"
   assume_role_policy = data.aws_iam_policy_document.ecs_service_assume.json
   tags               = var.tags
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 data "aws_iam_policy_document" "blue_green_permissions" {

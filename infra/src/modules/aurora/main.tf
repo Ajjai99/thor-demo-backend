@@ -23,6 +23,11 @@ resource "aws_db_subnet_group" "aurora_subnet_group" {
   tags = merge(var.tags, {
     Name = local.name_prefix
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # No inline ingress — separate rule below, same dependency-cycle reasoning as ecs/security_groups.tf.
@@ -34,8 +39,10 @@ resource "aws_security_group" "aurora_security_group" {
   description = "Aurora PostgreSQL - ingress per allowed_security_group_ids, egress scoped to the VPC"
   vpc_id      = var.vpc_id
 
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
     create_before_destroy = true
+    ignore_changes        = [tags, tags_all]
   }
 
   egress {
@@ -65,6 +72,11 @@ resource "aws_vpc_security_group_ingress_rule" "allowed" {
   tags = merge(var.tags, {
     Name = "${local.name_prefix}-${each.key}-ingress"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # manage_master_user_password: AWS-rotated in Secrets Manager, never in state. enable_http_endpoint: RDS Data API, reachable from CI with no VPC access.
@@ -94,6 +106,11 @@ resource "aws_rds_cluster" "aurora_cluster" {
   tags = merge(var.tags, {
     Name = local.name_prefix
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # Serverless v2 still needs one instance resource — this is what actually runs; the cluster above is storage/control only.
@@ -107,6 +124,11 @@ resource "aws_rds_cluster_instance" "aurora_instance" {
   tags = merge(var.tags, {
     Name = "${local.name_prefix}-instance"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # Second instance for Multi-AZ failover — kept as its own resource, not for_each, so it's purely additive.
@@ -120,4 +142,9 @@ resource "aws_rds_cluster_instance" "aurora_instance_2" {
   tags = merge(var.tags, {
     Name = "${local.name_prefix}-instance-2"
   })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
