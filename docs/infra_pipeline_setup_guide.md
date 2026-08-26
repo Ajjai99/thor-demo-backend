@@ -184,52 +184,7 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    {
      "Version": "2012-10-17",
      "Statement": [
-       {
-         "Sid": "Ec2NetworkingDescribe",
-         "Effect": "Allow",
-         "Action": ["ec2:Describe*"],
-         "Resource": "*"
-       },
-       {
-         "Sid": "Ec2NetworkingCreate",
-         "Effect": "Allow",
-         "Action": [
-           "ec2:CreateVpc", "ec2:CreateSubnet", "ec2:CreateSecurityGroup",
-           "ec2:CreateRouteTable", "ec2:CreateInternetGateway", "ec2:CreateVpcEndpoint",
-           "ec2:CreateTags"
-         ],
-         "Resource": "*",
-         "Condition": {
-           "StringEquals": { "aws:RequestTag/Environment": "<environment>" }
-         }
-       },
-       {
-         "Sid": "Ec2NetworkingManageOwn",
-         "Effect": "Allow",
-         "Action": [
-           "ec2:ModifyVpcAttribute", "ec2:DeleteVpc",
-           "ec2:ModifySubnetAttribute", "ec2:DeleteSubnet",
-           "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",
-           "ec2:RevokeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress", "ec2:DeleteSecurityGroup",
-           "ec2:CreateRoute", "ec2:DeleteRoute", "ec2:ReplaceRoute",
-           "ec2:AssociateRouteTable", "ec2:DisassociateRouteTable", "ec2:ReplaceRouteTableAssociation",
-           "ec2:DeleteRouteTable",
-           "ec2:AttachInternetGateway", "ec2:DetachInternetGateway", "ec2:DeleteInternetGateway",
-           "ec2:ModifyVpcEndpoint", "ec2:DeleteVpcEndpoints",
-           "ec2:DeleteTags"
-         ],
-         "Resource": [
-           "arn:aws:ec2:*:*:vpc/*",
-           "arn:aws:ec2:*:*:subnet/*",
-           "arn:aws:ec2:*:*:security-group/*",
-           "arn:aws:ec2:*:*:route-table/*",
-           "arn:aws:ec2:*:*:internet-gateway/*",
-           "arn:aws:ec2:*:*:vpc-endpoint/*"
-         ],
-         "Condition": {
-           "StringEquals": { "aws:ResourceTag/Environment": "<environment>" }
-         }
-       },
+       { "Sid": "Ec2", "Effect": "Allow", "Action": ["ec2:*"], "Resource": "*" },
        {
          "Sid": "EcrPushPull",
          "Effect": "Allow",
@@ -308,54 +263,118 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
            "cloudfront:GetInvalidation", "cloudfront:TagResource", "cloudfront:UntagResource",
            "cloudfront:ListTagsForResource"
          ],
-         "Resource": "*",
-         "Condition": {
-           "StringEquals": { "aws:ResourceTag/Environment": "<environment>" }
-         }
+         "Resource": "*"
        },
        {
          "Sid": "CloudFrontCreate",
          "Effect": "Allow",
          "Action": ["cloudfront:CreateDistribution", "cloudfront:TagResource"],
-         "Resource": "*",
-         "Condition": {
-           "StringEquals": { "aws:RequestTag/Environment": "<environment>" }
-         }
+         "Resource": "*"
        },
        {
          "Sid": "Waf",
          "Effect": "Allow",
          "Action": ["wafv2:*"],
-         "Resource": "arn:aws:wafv2:*:*:global/webacl/thor-<environment>-frontend-waf/*"
+         "Resource": [
+           "arn:aws:wafv2:*:*:global/webacl/thor-<environment>-frontend-waf/*",
+           "arn:aws:wafv2:*:*:global/managedruleset/*/*"
+         ]
        },
        {
-         "Sid": "Acm",
+         "Sid": "AcmCertificateCreate",
+         "Effect": "Allow",
+         "Action": "acm:RequestCertificate",
+         "Resource": "arn:aws:acm:*:*:certificate/*",
+         "Condition": {
+           "StringEquals": {
+             "aws:RequestTag/ManagedBy": "terraform",
+             "aws:RequestTag/Environment": "<environment>"
+           }
+         }
+       },
+       {
+         "Sid": "AcmCertificateManage",
          "Effect": "Allow",
          "Action": [
-           "acm:RequestCertificate", "acm:DescribeCertificate", "acm:DeleteCertificate",
+           "acm:DescribeCertificate", "acm:DeleteCertificate", "acm:GetCertificate",
            "acm:AddTagsToCertificate", "acm:RemoveTagsFromCertificate", "acm:ListTagsForCertificate",
-           "acm:TagResource", "acm:UntagResource", "acm:ListTagsForResource"
+           "acm:TagResource", "acm:UntagResource"
          ],
-         "Resource": "arn:aws:acm:*:*:certificate/*"
+         "Resource": "arn:aws:acm:*:*:certificate/*",
+         "Condition": {
+           "StringEquals": {
+             "aws:ResourceTag/ManagedBy": "terraform",
+             "aws:ResourceTag/Environment": "<environment>"
+           }
+         }
        },
-       { "Sid": "AcmList", "Effect": "Allow", "Action": ["acm:ListCertificates"], "Resource": "*" },
-       { "Sid": "Route53Create", "Effect": "Allow", "Action": ["route53:CreateHostedZone"], "Resource": "*" },
+       { "Sid": "AcmList", "Effect": "Allow", "Action": "acm:ListCertificates", "Resource": "*" },
+       { "Sid": "Route53HostedZoneCreate", "Effect": "Allow", "Action": "route53:CreateHostedZone", "Resource": "*" },
       {
-         "Sid": "Route53Zone",
+         "Sid": "Route53HostedZoneManage",
          "Effect": "Allow",
-         "Action": ["route53:GetHostedZone", "route53:ChangeResourceRecordSets", "route53:ListResourceRecordSets"],
+         "Action": ["route53:GetHostedZone", "route53:ListResourceRecordSets", "route53:DeleteHostedZone"],
          "Resource": "arn:aws:route53:::hostedzone/*"
        },
       {
          "Sid": "Route53List",
          "Effect": "Allow",
-         "Action": [
-           "route53:ListHostedZones", "route53:ListHostedZonesByName", "route53:GetChange",
-           "route53:DeleteHostedZone", "route53:ChangeTagsForResource", "route53:ListTagsForResource"
-         ],
+         "Action": ["route53:ListHostedZones", "route53:ListHostedZonesByName", "route53:GetChange"],
          "Resource": "*"
        },
-       { "Sid": "ServiceDiscovery", "Effect": "Allow", "Action": ["servicediscovery:*"], "Resource": "*" },
+       {
+         "Sid": "Route53RecordManage",
+         "Effect": "Allow",
+         "Action": "route53:ChangeResourceRecordSets",
+         "Resource": "arn:aws:route53:::hostedzone/*",
+         "Condition": {
+           "ForAllValues:StringLike": {
+             "route53:ChangeResourceRecordSetsNormalizedRecordNames": ["<environment-domain>", "*.<environment-domain>"]
+           }
+         }
+       },
+       {
+         "Sid": "Route53HostedZoneTagging",
+         "Effect": "Allow",
+         "Action": ["route53:ChangeTagsForResource", "route53:ListTagsForResource"],
+         "Resource": "arn:aws:route53:::hostedzone/*"
+       },
+       {
+         "Sid": "ServiceDiscoveryNamespaceCreate",
+         "Effect": "Allow",
+         "Action": "servicediscovery:CreateHttpNamespace",
+         "Resource": "*",
+         "Condition": {
+           "StringEquals": {
+             "aws:RequestTag/ManagedBy": "terraform",
+             "aws:RequestTag/Environment": "<environment>"
+           }
+         }
+       },
+       {
+         "Sid": "ServiceDiscoveryNamespaceManage",
+         "Effect": "Allow",
+         "Action": ["servicediscovery:DeleteNamespace", "servicediscovery:GetNamespace", "servicediscovery:UpdateHttpNamespace"],
+         "Resource": "arn:aws:servicediscovery:*:*:namespace/*",
+         "Condition": {
+           "StringEquals": {
+             "aws:ResourceTag/ManagedBy": "terraform",
+             "aws:ResourceTag/Environment": "<environment>"
+           }
+         }
+       },
+       {
+         "Sid": "ServiceDiscoveryTagging",
+         "Effect": "Allow",
+         "Action": ["servicediscovery:ListTagsForResource", "servicediscovery:TagResource", "servicediscovery:UntagResource"],
+         "Resource": "arn:aws:servicediscovery:*:*:namespace/*",
+         "Condition": {
+           "StringEquals": {
+             "aws:ResourceTag/ManagedBy": "terraform",
+             "aws:ResourceTag/Environment": "<environment>"
+           }
+         }
+       },
        {
          "Sid": "S3FrontendBucket",
          "Effect": "Allow",
@@ -421,6 +440,15 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
            "arn:aws:rds:*:*:subgrp:thor-<environment>-neptune"
          ]
        },
+      {
+         "Sid": "BedrockInvokeClaudeModels",
+         "Effect": "Allow",
+         "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+         "Resource": [
+           "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
+           "arn:aws:bedrock:*:*:inference-profile/*anthropic.claude-*"
+         ]
+       },
       { "Sid": "SecretsManager", "Effect": "Allow", "Action": ["secretsmanager:*"], "Resource": "*" },
        {
          "Sid": "Lambda",
@@ -437,6 +465,7 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
            "arn:aws:logs:*:*:log-group:/aws/lambda/thor-<environment>-*"
          ]
        },
+       { "Sid": "LogsDescribe", "Effect": "Allow", "Action": ["logs:DescribeLogGroups"], "Resource": "*" },
        {
          "Sid": "ManageThorIamRoles",
          "Effect": "Allow",
@@ -461,19 +490,49 @@ Repeat this for each of `dev`, `qa`, `prod` — three separate roles,
    state — that lives in JFrog Artifactory (Step 4), not an S3 bucket
    this role needs access to.
 
-   **Why some statements use `Resource: "*"` instead of a scoped ARN:**
-   in each case, the resource's identifier is AWS-generated rather than
-   derived from the `thor-<environment>-*` naming convention, so a name
-   pattern could never actually match it.
+   **Scoped by tag (ABAC), not by name:** ACM certificates and Service
+   Discovery's HTTP namespace can't be scoped by the `thor-<environment>-*`
+   naming convention (their ARNs use AWS-random IDs — same reason as the
+   table below), so instead they're scoped by the `ManagedBy=terraform`/
+   `Environment=<environment>` tags every resource already gets from
+   `root.hcl`'s provider-level `default_tags`. Create actions
+   (`RequestCertificate`, `CreateHttpNamespace`) use `aws:RequestTag`
+   (checked against the tags submitted in that same create call); actions
+   on an already-existing resource use `aws:ResourceTag` instead — the two
+   aren't interchangeable, see the `Ec2` note just below for why.
+   `route53:ChangeResourceRecordSets` gets a different, record-name-based
+   lever instead of ABAC (Route53 doesn't support tag conditions at all —
+   see the table below): `route53:ChangeResourceRecordSetsNormalizedRecordNames`,
+   a real, documented Route53-specific condition key, restricts which
+   record names a role can write to `<environment-domain>`/
+   `*.<environment-domain>` (e.g. `dev.cndemo.com`/`*.dev.cndemo.com`) —
+   this matters now that every environment's role writes its own NS
+   delegation record into the same shared apex zone (`cndemo.com`, see
+   `modules/route53`'s `parent_zone_name`): without this, dev's role could
+   also rewrite qa's or prod's records in that same zone.
+
+   **`Ec2` is a deliberate, unconditional `ec2:*`/`Resource: "*"` wildcard**,
+   not a case where scoping was unavailable — EC2 resource IDs
+   (`vpc-xxxxx`) are AWS-random and many create actions only support
+   scoping via `aws:RequestTag` (tag-on-create, evaluated against the tags
+   submitted in that same API call — confirmed via AWS's own IAM tagging
+   docs, not a chicken-and-egg problem), but that finer-grained version was
+   explicitly traded for simplicity here.
+
+   **Why the remaining statements use `Resource: "*"` instead of a scoped
+   ARN:** in each case, the resource's identifier is AWS-generated rather
+   than derived from the `thor-<environment>-*` naming convention, so a
+   name pattern could never actually match it.
 
    | Service | Reason |
    |---|---|
-   | EC2 | VPC/subnet/security-group IDs (`vpc-xxxxx`) are AWS-random — and many EC2 create actions don't reliably support ARN or tag-on-create scoping anyway |
    | API Gateway, CloudFront, Service Discovery | ARNs use AWS-random IDs (API ID, distribution ID, namespace ID), never the `thor-<environment>-*` name |
    | Route53 | Hosted zone IDs (`Z0953...`) are AWS-random; the domain name never appears in the zone's ARN |
    | ACM `ListCertificates` | Confirmed via AWS's ACM docs — this one action needs bare `Resource: "*"`, unlike the rest of the `Acm` statement (which scopes to `certificate/*`) |
    | Secrets Manager | Aurora's master-password secret gets an AWS-generated ID (`rds!cluster-<uuid>`) via `manage_master_user_password` — never name-derived |
-   | RDS Proxy | Confirmed via a real `DBProxyArn` (AWS SDK/CloudFormation issue tracker) — its identifier is an AWS-generated `prx-<random-id>`, not the chosen `db_proxy_name`; same class of problem as EC2 above |
+   | RDS Proxy | Confirmed via a real `DBProxyArn` (AWS SDK/CloudFormation issue tracker) — its identifier is an AWS-generated `prx-<random-id>`, not the chosen `db_proxy_name` |
+   | CloudWatch Logs `DescribeLogGroups` | Confirmed via a real `AccessDenied` error in this account — this bulk list/describe action can't be scoped to a specific log-group ARN, same class as EC2's `Describe*` actions |
+   | WAFv2 | `CreateWebACL` checks permission against every resource type the request references — confirmed via a real `AccessDenied` error naming `global/managedruleset/*/*`, since the frontend WAF's rules reference AWS Managed Rule Groups, not just the `webacl` ARN being created |
 
    ELB listener/target group/load balancer ARN segment counts (`listener/net/<name>/<lb-id>/<listener-id>`, etc.) are confirmed against AWS's documented format, not just assumed.
 

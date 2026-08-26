@@ -74,9 +74,10 @@ locals {
   # not hosted_zones' own logical keys.
   route53_zones = {
     for zone_key, zone in var.hosted_zones : zone.zone_name => {
-      create_zone = zone.create_zone
-      comment     = zone.comment
-      tags        = zone.tags
+      create_zone      = zone.create_zone
+      comment          = zone.comment
+      tags             = zone.tags
+      parent_zone_name = zone.parent_zone_name
     }
   }
 
