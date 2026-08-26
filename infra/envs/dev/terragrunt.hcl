@@ -6,6 +6,10 @@ terraform {
   source = "../../src"
 }
 
+locals {
+  root_domain = "susdemo.site"
+}
+
 # Every value the root module accepts is spelled out below instead of relying on a default in infra/src/variables.tf; only `environment` is left out, since infra/root.hcl already supplies it for every environment.
 inputs = {
   # --- network ---
@@ -97,18 +101,18 @@ inputs = {
     # delegation record (added manually below, same as SPHERE IT would for
     # real) has somewhere to live.
     apex = {
-      zone_name    = "cndemo.com" # Dev 
+      zone_name    = local.root_domain # Dev
       certificates = {}
     }
 
     thor = {
-      zone_name = "dev.cndemo.com"
+      zone_name = "dev.${local.root_domain}"
       certificates = {
         frontend = {
-          domain_name = "dev.cndemo.com"
+          domain_name = "dev.${local.root_domain}"
         }
         api_gateway = {
-          domain_name = "api.dev.cndemo.com"
+          domain_name = "api.dev.${local.root_domain}"
         }
       }
     }
@@ -132,6 +136,9 @@ inputs = {
 
   # --- rds proxy ---
   enable_rds_proxy = true
+
+  # --- api gateway custom domain ---
+  api_gateway_certificate_key = "thor/api_gateway"
 
   # --- api gateway authorizer ---
   enable_authorizer = true

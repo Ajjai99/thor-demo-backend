@@ -129,24 +129,6 @@ resource "aws_route53_record" "alias_a" {
   }
 }
 
-# CloudFront distributions serve IPv6 by default (is_ipv6_enabled defaults
-# to true) — the AAAA alias is what actually lets IPv6-only clients resolve
-# this hostname; without it they'd fail even though the distribution itself
-# supports IPv6 fine.
-resource "aws_route53_record" "alias_aaaa" {
-  count = local.use_custom_domain ? 1 : 0
-
-  zone_id = var.zone_id
-  name    = var.domain_name
-  type    = "AAAA"
-
-  alias {
-    name                   = aws_cloudfront_distribution.thor-fe-cdn.domain_name
-    zone_id                = aws_cloudfront_distribution.thor-fe-cdn.hosted_zone_id
-    evaluate_target_health = false
-  }
-}
-
 data "aws_iam_policy_document" "cloudfront_access" {
   statement {
     sid       = "AllowCloudFrontServicePrincipalReadOnly"

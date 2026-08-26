@@ -6,29 +6,21 @@ terraform {
   source = "../../src"
 }
 
-
-dependency "dev" {
-  config_path = "../dev"
-
-  mock_outputs = {
-    vpc_id             = "vpc-mock00000000"
-    vpc_cidr           = "10.255.255.0/24"
-    public_subnet_ids  = ["subnet-mockpub1", "subnet-mockpub2"]
-    private_subnet_ids = ["subnet-mockpriv1", "subnet-mockpriv2"]
-  }
-  mock_outputs_allowed_terraform_commands = ["plan", "validate"]
+locals {
+  root_domain = "susdemo.site"
 }
+
 
 # Every value the root module accepts is spelled out below, same as envs/dev — only `environment` is left out, root.hcl supplies it.
 inputs = {
   # --- network ---
-  # qa borrows dev's VPC — vpc_cidr/subnet_cidrs below are unused while enable_network is false.
-  enable_network = false
-
-  dev_vpc_id             = dependency.dev.outputs.vpc_id
-  dev_vpc_cidr           = dependency.dev.outputs.vpc_cidr
-  dev_public_subnet_ids  = dependency.dev.outputs.public_subnet_ids
-  dev_private_subnet_ids = dependency.dev.outputs.private_subnet_ids
+  # qa gets its own VPC, separate from dev's (10.0.0.0/16) — no shared/borrowed network between environments.
+  enable_network       = true
+  vpc_cidr             = "10.1.0.0/16"
+  az_count             = 2
+  public_subnet_cidrs  = ["10.1.0.0/24", "10.1.1.0/24"]
+  private_subnet_cidrs = ["10.1.10.0/24", "10.1.11.0/24"]
+  enable_vpc_endpoints = true
 
   # --- ecs compute ---
   enable_compute            = false
@@ -88,19 +80,38 @@ inputs = {
   }
 
   # --- route53 + acm (hosted zones with their certificates nested) ---
-  # Off until the domain is confirmed and SPHERE IT has added the delegation
-  # NS record for qa.sphereboard.ai — see project_thor_domain memory. Values
-  # below are the working assumption, not final.
-  enable_route53 = false
+  # TEMPORARY test override, same as dev: susdemo.site is already registered
+  # and its apex zone already exists (created by envs/dev). qa.susdemo.site
+  # is a subdomain of that same apex, not a new apex of its own — after
+  # applying route53 here, the resulting zone's 4 name servers need to be
+  # added manually as an NS record set for "qa" inside the existing
+  # susdemo.site apex zone (same manual delegation step already done for
+  # "dev"). Revert to the qa.sphereboard.ai / false values below once that
+  # domain is confirmed — don't leave this pointed at susdemo.site.
+  #   enable_route53 = false
+  #   hosted_zones = {
+  #     thor = {
+  #       zone_name = "qa.sphereboard.ai"
+  #       certificates = {
+  #         frontend = {
+  #           domain_name               = "qa.sphereboard.ai"
+  #           subject_alternative_names = ["api.qa.sphereboard.ai"]
+  #         }
+  #       }
+  #     }
+  #   }
+  enable_route53 = true
 
   hosted_zones = {
     thor = {
-      zone_name = "qa.sphereboard.ai"
+      zone_name = "qa.${local.root_domain}"
 
       certificates = {
         frontend = {
-          domain_name               = "qa.sphereboard.ai"
-          subject_alternative_names = ["api.qa.sphereboard.ai"]
+          domain_name = "qa.${local.root_domain}"
+        }
+        api_gateway = {
+          domain_name = "api.qa.${local.root_domain}"
         }
       }
     }
@@ -123,6 +134,9 @@ inputs = {
 
   # --- rds proxy ---
   enable_rds_proxy = true
+
+  # --- api gateway custom domain ---
+  api_gateway_certificate_key = "thor/api_gateway"
 
   # --- api gateway authorizer ---
   enable_authorizer = true

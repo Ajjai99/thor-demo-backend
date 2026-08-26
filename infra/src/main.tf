@@ -111,9 +111,11 @@ module "acm" {
   source = "./modules/acm"
 
   certificates = {
-    for key, cert in local.route53_certificates_flat : key => merge(cert, {
-      zone_id = module.route53[0].zone_ids[cert.zone_name]
-    })
+    for key, cert in local.route53_certificates_flat : key => {
+      domain_name               = cert.domain_name
+      subject_alternative_names = cert.subject_alternative_names
+      zone_id                   = module.route53[0].zone_ids[cert.zone_name]
+    }
   }
 
   tags = var.tags
@@ -127,6 +129,13 @@ locals {
     domain_name     = local.route53_certificates_flat[var.frontend_certificate_key].domain_name
     certificate_arn = module.acm[0].certificate_arns[var.frontend_certificate_key]
     zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.frontend_certificate_key].zone_name]
+  } : null
+
+  # Same pattern as frontend_route53, for the API Gateway custom domain.
+  apigw_route53 = var.enable_route53 && var.api_gateway_certificate_key != "" ? {
+    domain_name     = local.route53_certificates_flat[var.api_gateway_certificate_key].domain_name
+    certificate_arn = module.acm[0].certificate_arns[var.api_gateway_certificate_key]
+    zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.api_gateway_certificate_key].zone_name]
   } : null
 }
 
@@ -161,6 +170,10 @@ module "api_gateway" {
   enable_authorizer               = var.enable_authorizer
   authorizer_lambda_invoke_arn    = var.enable_authorizer ? module.lambda[0].lambda_invoke_arn : ""
   authorizer_lambda_function_name = var.enable_authorizer ? module.lambda[0].lambda_function_name : ""
+
+  domain_name         = local.apigw_route53 != null ? local.apigw_route53.domain_name : ""
+  acm_certificate_arn = local.apigw_route53 != null ? local.apigw_route53.certificate_arn : ""
+  zone_id             = local.apigw_route53 != null ? local.apigw_route53.zone_id : ""
 
   tags = var.tags
 }
