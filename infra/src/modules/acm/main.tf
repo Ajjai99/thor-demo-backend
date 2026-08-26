@@ -7,8 +7,10 @@ resource "aws_acm_certificate" "this" {
   subject_alternative_names = each.value.subject_alternative_names
   validation_method         = "DNS"
 
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
     create_before_destroy = true
+    ignore_changes        = [tags, tags_all]
   }
 
   tags = merge(var.tags, {

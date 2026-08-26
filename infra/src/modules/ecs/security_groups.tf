@@ -40,6 +40,11 @@ resource "aws_vpc_security_group_ingress_rule" "public_from_vpc" {
   referenced_security_group_id = aws_security_group.nlb[each.key].id
 
   tags = var.tags
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # Internal services: ingress from each public peer's own SG, merged across every non-public × public pair.
@@ -61,4 +66,9 @@ resource "aws_vpc_security_group_ingress_rule" "internal_from_public_peers" {
   ip_protocol                  = "tcp"
 
   tags = var.tags
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
