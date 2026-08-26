@@ -6,6 +6,10 @@ terraform {
   source = "../../src"
 }
 
+locals {
+  apex_domain = "cndemo.com"
+}
+
 # Every value the root module accepts is spelled out below, same as envs/dev — only `environment` is left out, root.hcl supplies it.
 inputs = {
   # --- network ---
@@ -81,13 +85,14 @@ inputs = {
     # Same apex zone dev creates — looked up here, not created, so this
     # doesn't fight dev over who owns cndemo.com.
     apex = {
-      zone_name    = "cndemo.com"
+      zone_name    = local.apex_domain
       create_zone  = false
       certificates = {}
     }
 
     thor = {
-      zone_name = "prod.cndemo.com"
+      zone_name        = "prod.cndemo.com"
+      parent_zone_name = local.apex_domain
       certificates = {
         frontend = {
           domain_name = "prod.cndemo.com"

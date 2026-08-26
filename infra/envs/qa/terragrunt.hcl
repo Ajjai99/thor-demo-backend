@@ -85,13 +85,14 @@ inputs = {
     # Same apex zone dev creates — looked up here, not created, so this
     # doesn't fight dev over who owns cndemo.com.
     apex = {
-      zone_name    = "cndemo.com"
+      zone_name    = local.apex_domain
       create_zone  = false
       certificates = {}
     }
 
     thor = {
-      zone_name = "qa.cndemo.com"
+      zone_name        = "qa.cndemo.com"
+      parent_zone_name = local.apex_domain
       certificates = {
         frontend = {
           domain_name = "qa.cndemo.com"

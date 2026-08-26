@@ -6,6 +6,10 @@ terraform {
   source = "../../src"
 }
 
+locals {
+  apex_domain = "cndemo.com" # Dev
+}
+
 # Every value the root module accepts is spelled out below instead of relying on a default in infra/src/variables.tf; only `environment` is left out, since infra/root.hcl already supplies it for every environment.
 inputs = {
   # --- network ---
@@ -83,15 +87,17 @@ inputs = {
 
   hosted_zones = {
     # Apex zone — no certificates of its own, exists only so the "dev" NS
-    # delegation record (added manually below, same as SPHERE IT would for
-    # real) has somewhere to live.
+    # delegation record (created automatically by modules/route53 via
+    # thor's parent_zone_name below, same as SPHERE IT would for real) has
+    # somewhere to live.
     apex = {
-      zone_name    = "cndemo.com" # Dev
+      zone_name    = local.apex_domain
       certificates = {}
     }
 
     thor = {
-      zone_name = "dev.cndemo.com"
+      zone_name        = "dev.cndemo.com"
+      parent_zone_name = local.apex_domain
       certificates = {
         frontend = {
           domain_name = "dev.cndemo.com"

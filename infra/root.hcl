@@ -60,7 +60,7 @@ provider "aws" {
     tags = {
       Project     = "thor-platform"
       Environment = "${local.environment}"
-      ManagedBy   = "terragrunt"
+      ManagedBy   = "terraform"
     }
   }
 }

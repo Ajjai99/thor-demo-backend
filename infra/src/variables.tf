@@ -101,12 +101,13 @@ variable "enable_route53" {
 }
 
 variable "hosted_zones" {
-  description = "Hosted zones and their ACM certificates, nested together for readability. Keyed by an arbitrary logical name (not the domain itself — that's zone_name). Each zone's certificates map is in turn keyed by its own arbitrary logical name, scoped to that zone, so short names like \"api\" can repeat across different zones without colliding. Flattened into modules/route53 + modules/acm's flat shapes inside main.tf — this nesting is purely a root-level ergonomic choice, not something either module needs to know about. Unused while enable_route53 is false."
+  description = "Hosted zones and their ACM certificates, nested together for readability. Keyed by an arbitrary logical name (not the domain itself — that's zone_name). Each zone's certificates map is in turn keyed by its own arbitrary logical name, scoped to that zone, so short names like \"api\" can repeat across different zones without colliding. parent_zone_name, if set to another zone's zone_name present in this same map, gets this zone's NS delegation record created automatically in that parent (modules/route53) instead of needing to be pasted in by hand. Flattened into modules/route53 + modules/acm's flat shapes inside main.tf — this nesting is purely a root-level ergonomic choice, not something either module needs to know about. Unused while enable_route53 is false."
   type = map(object({
-    zone_name   = string
-    create_zone = optional(bool, true)
-    comment     = optional(string, "")
-    tags        = optional(map(string), {})
+    zone_name        = string
+    create_zone      = optional(bool, true)
+    comment          = optional(string, "")
+    tags             = optional(map(string), {})
+    parent_zone_name = optional(string, "")
     certificates = map(object({
       domain_name               = string
       subject_alternative_names = optional(list(string), [])
