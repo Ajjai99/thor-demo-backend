@@ -21,7 +21,7 @@ inputs = {
 
   # --- ecs compute ---
   # false until a real image has been pushed to each ECR repo below — the cluster/namespace/repos are created regardless.
-  enable_compute            = false
+  enable_compute            = true
   enable_container_insights = true
 
   # container_image = "" falls back to that service's own ECR repo at the "latest" tag; set it explicitly to pin a specific tag.
