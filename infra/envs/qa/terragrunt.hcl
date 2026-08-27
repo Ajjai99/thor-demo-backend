@@ -80,32 +80,18 @@ inputs = {
   }
 
   # --- route53 + acm (hosted zones with their certificates nested) ---
-  # TEMPORARY test override, same as dev: susdemo.site is already registered
-  # and its apex zone already exists (created by envs/dev). qa.susdemo.site
-  # is a subdomain of that same apex, not a new apex of its own — after
-  # applying route53 here, the resulting zone's 4 name servers need to be
-  # added manually as an NS record set for "qa" inside the existing
-  # susdemo.site apex zone (same manual delegation step already done for
-  # "dev"). Revert to the qa.sphereboard.ai / false values below once that
-  # domain is confirmed — don't leave this pointed at susdemo.site.
-  #   enable_route53 = false
-  #   hosted_zones = {
-  #     thor = {
-  #       zone_name = "qa.sphereboard.ai"
-  #       certificates = {
-  #         frontend = {
-  #           domain_name               = "qa.sphereboard.ai"
-  #           subject_alternative_names = ["api.qa.sphereboard.ai"]
-  #         }
-  #       }
-  #     }
-  #   }
+  # apex is looked up (create_zone = false), not created — susdemo.site's apex zone already exists (created by envs/dev). qa only creates its own "qa." subdomain zone here.
   enable_route53 = true
 
   hosted_zones = {
+    apex = {
+      zone_name    = local.root_domain
+      create_zone  = false
+      certificates = {}
+    }
+
     thor = {
       zone_name = "qa.${local.root_domain}"
-
       certificates = {
         frontend = {
           domain_name = "qa.${local.root_domain}"
