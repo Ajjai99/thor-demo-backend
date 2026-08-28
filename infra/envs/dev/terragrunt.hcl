@@ -13,8 +13,8 @@ locals {
 # Every value the root module accepts is spelled out below instead of relying on a default in infra/src/variables.tf; only `environment` is left out, since infra/root.hcl already supplies it for every environment.
 inputs = {
   # --- network ---
-  vpc_cidr             = "10.0.0.0/16"
-  az_count             = 2
+  vpc_cidr = "10.0.0.0/16"
+  az_count = 2
   # public_subnet_cidrs  = ["10.0.0.0/24", "10.0.1.0/24"]
   private_subnet_cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
   enable_vpc_endpoints = true
