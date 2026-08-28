@@ -49,37 +49,37 @@ resource "aws_vpc" "thor-vpc" {
   }
 }
 
-resource "aws_internet_gateway" "thor-igw" {
-  vpc_id = aws_vpc.thor-vpc.id
+# resource "aws_internet_gateway" "thor-igw" {
+#   vpc_id = aws_vpc.thor-vpc.id
 
-  tags = merge(var.tags, {
-    Name = "${local.name_prefix}-igw"
-  })
+#   tags = merge(var.tags, {
+#     Name = "${local.name_prefix}-igw"
+#   })
 
-  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
-  lifecycle {
-    ignore_changes = [tags, tags_all]
-  }
-}
+#   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+#   lifecycle {
+#     ignore_changes = [tags, tags_all]
+#   }
+# }
 
 # Public subnets — ALB + WAF at the edge only, per the platform's ingress design
-resource "aws_subnet" "public" {
-  count                   = length(var.public_subnet_cidrs)
-  vpc_id                  = aws_vpc.thor-vpc.id
-  cidr_block              = var.public_subnet_cidrs[count.index]
-  availability_zone       = local.azs[count.index]
-  map_public_ip_on_launch = true
+# resource "aws_subnet" "public" {
+#   count                   = length(var.public_subnet_cidrs)
+#   vpc_id                  = aws_vpc.thor-vpc.id
+#   cidr_block              = var.public_subnet_cidrs[count.index]
+#   availability_zone       = local.azs[count.index]
+#   map_public_ip_on_launch = true
 
-  tags = merge(var.tags, {
-    Name = "${local.name_prefix}-public-${local.azs[count.index]}"
-    Tier = "public"
-  })
+#   tags = merge(var.tags, {
+#     Name = "${local.name_prefix}-public-${local.azs[count.index]}"
+#     Tier = "public"
+#   })
 
-  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
-  lifecycle {
-    ignore_changes = [tags, tags_all]
-  }
-}
+#   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+#   lifecycle {
+#     ignore_changes = [tags, tags_all]
+#   }
+# }
 
 # Private subnets — ECS Fargate tasks, Aurora / RDS Proxy, Graph DB
 resource "aws_subnet" "private" {
@@ -99,29 +99,29 @@ resource "aws_subnet" "private" {
   }
 }
 
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.thor-vpc.id
+# resource "aws_route_table" "public" {
+#   vpc_id = aws_vpc.thor-vpc.id
 
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.thor-igw.id
-  }
+#   route {
+#     cidr_block = "0.0.0.0/0"
+#     gateway_id = aws_internet_gateway.thor-igw.id
+#   }
 
-  tags = merge(var.tags, {
-    Name = "${local.name_prefix}-public-rt"
-  })
+#   tags = merge(var.tags, {
+#     Name = "${local.name_prefix}-public-rt"
+#   })
 
-  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
-  lifecycle {
-    ignore_changes = [tags, tags_all]
-  }
-}
+#   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+#   lifecycle {
+#     ignore_changes = [tags, tags_all]
+#   }
+# }
 
-resource "aws_route_table_association" "public" {
-  count          = length(aws_subnet.public)
-  subnet_id      = aws_subnet.public[count.index].id
-  route_table_id = aws_route_table.public.id
-}
+# resource "aws_route_table_association" "public" {
+#   count          = length(aws_subnet.public)
+#   subnet_id      = aws_subnet.public[count.index].id
+#   route_table_id = aws_route_table.public.id
+# }
 
 # No NAT Gateway route here by design — private subnets reach AWS services only through the VPC endpoints below.
 resource "aws_route_table" "private" {
