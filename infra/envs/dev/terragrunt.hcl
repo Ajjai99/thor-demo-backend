@@ -15,7 +15,7 @@ inputs = {
   # --- network ---
   vpc_cidr             = "10.0.0.0/16"
   az_count             = 2
-  public_subnet_cidrs  = ["10.0.0.0/24", "10.0.1.0/24"]
+  # public_subnet_cidrs  = ["10.0.0.0/24", "10.0.1.0/24"]
   private_subnet_cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
   enable_vpc_endpoints = true
 
@@ -83,7 +83,7 @@ inputs = {
   }
 
   # --- route53 + acm (hosted zones with their certificates nested) ---
-  enable_route53 = true
+  enable_route53 = false
 
   hosted_zones = {
     # Apex zone — no certificates of its own, exists only so the "dev" NS

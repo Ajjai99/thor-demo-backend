@@ -17,7 +17,7 @@ locals {
 }
 
 resource "aws_db_subnet_group" "aurora_subnet_group" {
-  name       = local.name_prefix
+  name_prefix      = "${local.name_prefix}-subnet-group"
   subnet_ids = var.private_subnet_ids
 
   tags = merge(var.tags, {
