@@ -11,3 +11,4 @@ def health():
 @app.get("/")
 def root():
     return {"service": "intelligence-engine", "status": "ok"}
+
