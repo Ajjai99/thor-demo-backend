@@ -1,7 +1,7 @@
 {
   "service": "thor-api",
   "environment": "dev",
-  "digest": "877969058937.dkr.ecr.us-east-1.amazonaws.com/thor-api-dev@sha256:3a362895fe09bf24c77f53490dfad0838095567960a652fd58094da871f626c7",
-  "commitId": "492e7edff261fd037d8614471525503cd5a891b1",
-  "deployedAt": "2026-08-30T13:25:16Z"
+  "digest": "877969058937.dkr.ecr.us-east-1.amazonaws.com/thor-api-dev@sha256:e2bdc8af0982707f058686af7366581b424684917d6a12406f7dfdbe641442d0",
+  "commitId": "b6d416516a181c10a4229c8fe98309455680c651",
+  "deployedAt": "2026-08-30T18:00:50Z"
 }
