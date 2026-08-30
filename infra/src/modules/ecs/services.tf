@@ -6,6 +6,15 @@ locals {
     for k, v in local.active_services : k =>
     v.container_image != "" ? v.container_image : "${aws_ecr_repository.thor-ecr-repo[k].repository_url}:latest"
   }
+
+  # NLB-fronted services (thor-api) must match the NLB's own mode — plain TCP/HTTP passthrough
+  # unless a real cert makes the NLB re-encrypt. Internal, Service-Connect-only services
+  # (task-api, intelligence-engine) always terminate TLS — their Dockerfiles always bake a
+  # self-signed cert and always listen on the TLS port, independent of the NLB's config.
+  container_tls_enabled = {
+    for k, v in local.active_services : k =>
+    v.expose_via_nlb ? local.nlb_tls_enabled : true
+  }
 }
 
 resource "aws_cloudwatch_log_group" "thor-svc-logs" {
@@ -49,11 +58,18 @@ resource "aws_ecs_task_definition" "thor-svc-taskdef" {
       environment = concat(
         [for k, v in each.value.environment_variables : { name = k, value = v }],
         # Fixed path/password baked into the image by the Dockerfile's openssl step — not a
-        # deployment-time secret, so it's injected here rather than via terragrunt.hcl.
-        each.value.expose_via_nlb && local.nlb_tls_enabled ? [
-          { name = "TLS_CERT_PFX_PATH", value = "/app/certs/server.pfx" },
-          { name = "TLS_CERT_PFX_PASSWORD", value = "thor-internal" },
-        ] : []
+        # deployment-time secret, so it's injected here rather than via terragrunt.hcl. PFX for
+        # the .NET/Kestrel services (thor-api, task-api); intelligence-engine's uvicorn can't
+        # load PKCS12, so it gets the PEM cert/key pair instead.
+        local.container_tls_enabled[each.key] ? (
+          each.key == "intelligence-engine" ? [
+            { name = "TLS_CERT_PATH", value = "/app/certs/server.crt" },
+            { name = "TLS_CERT_KEY_PATH", value = "/app/certs/server.key" },
+            ] : [
+            { name = "TLS_CERT_PFX_PATH", value = "/app/certs/server.pfx" },
+            { name = "TLS_CERT_PFX_PASSWORD", value = "thor-internal" },
+          ]
+        ) : []
       )
 
       secrets = [
@@ -63,7 +79,7 @@ resource "aws_ecs_task_definition" "thor-svc-taskdef" {
       # Lets ECS detect a hung-but-running container on task-api/intelligence-engine, which have no ALB health check; assumes the image has curl on PATH.
       # -k (skip cert validation) only matters for the TLS branch, where the cert is self-signed.
       healthCheck = {
-        command = each.value.expose_via_nlb && local.nlb_tls_enabled ? [
+        command = local.container_tls_enabled[each.key] ? [
           "CMD-SHELL", "curl -k -f https://localhost:${each.value.container_port}${each.value.health_check_path} || exit 1"
           ] : [
           "CMD-SHELL", "curl -f http://localhost:${each.value.container_port}${each.value.health_check_path} || exit 1"

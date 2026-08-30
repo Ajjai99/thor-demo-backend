@@ -27,8 +27,9 @@ inputs = {
   services = {
     thor-api = {
       container_image = ""
-      # 443, thor-api terminates the NLB's re-encrypted TLS session itself (self-signed cert, see Program.cs).
-      container_port         = 443
+      # 8443, thor-api terminates the NLB's re-encrypted TLS session itself (self-signed cert, see Program.cs).
+      # NLB's own external listener stays on 443 (nlb_listener_port below) — separate port.
+      container_port         = 8443
       cpu                    = 1024
       memory                 = 2048
       desired_count          = 4
@@ -46,7 +47,7 @@ inputs = {
     }
     task-api = {
       container_image       = ""
-      container_port        = 8080
+      container_port        = 8443
       cpu                   = 1024
       memory                = 2048
       desired_count         = 4
@@ -62,7 +63,7 @@ inputs = {
     }
     intelligence-engine = {
       container_image       = ""
-      container_port        = 8080
+      container_port        = 8443
       cpu                   = 1024
       memory                = 2048
       desired_count         = 4

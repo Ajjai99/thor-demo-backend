@@ -31,8 +31,9 @@ inputs = {
       # fallback) would reference an image that doesn't exist. Needed for this apply since task_definition is
       # temporarily un-ignored on the ECS service (see services.tf) and would otherwise push a broken revision.
       container_image = ""
-      # 443 , thor-api terminates the NLB's re-encrypted TLS session itself (self-signed)
-      container_port         = 443
+      # 8443, thor-api terminates the NLB's re-encrypted TLS session itself (self-signed).
+      # NLB's own external listener stays on 443 (nlb_listener_port below) — separate port.
+      container_port         = 8443
       cpu                    = 512  # 0.5 vCPU
       memory                 = 1024 # 1 GB
       desired_count          = 2
@@ -50,7 +51,7 @@ inputs = {
     }
     task-api = {
       container_image       = ""
-      container_port        = 8080
+      container_port        = 8443
       cpu                   = 512  # 0.5 vCPU
       memory                = 1024 # 1 GB
       desired_count         = 2
@@ -66,7 +67,7 @@ inputs = {
     }
     intelligence-engine = {
       container_image       = ""
-      container_port        = 8080
+      container_port        = 8443
       cpu                   = 512  # 0.5 vCPU
       memory                = 1024 # 1 GB
       desired_count         = 2
