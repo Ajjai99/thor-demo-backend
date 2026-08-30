@@ -35,5 +35,3 @@ else
 {
     app.Run();
 }
-
-
