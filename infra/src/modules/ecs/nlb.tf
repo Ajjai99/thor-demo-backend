@@ -196,9 +196,6 @@ resource "aws_lb" "thor-nlb" {
 }
 
 # ECS modifies default_action during blue/green deploys — ignore it here to avoid fighting that.
-# TEMPORARILY dropped from ignore_changes below to let this one apply repoint the listener at the
-# new tgb-/tgg- target groups (see their lifecycle block) — restore `default_action` to the
-# ignore_changes list right after this apply succeeds, so ECS's live swaps aren't fought again.
 resource "aws_lb_listener" "thor-nlb-listener" {
   for_each = local.public_services
 
@@ -215,7 +212,7 @@ resource "aws_lb_listener" "thor-nlb-listener" {
 
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
-    ignore_changes = [tags, tags_all]
+    ignore_changes = [default_action, tags, tags_all]
   }
 
   tags = var.tags
@@ -224,8 +221,7 @@ resource "aws_lb_listener" "thor-nlb-listener" {
 # Lets test traffic hit the green revision before production traffic cuts over — AWS's optional blue/green
 # "test traffic routing" step. Always created alongside the production listener (even for ROLLING services) so
 # toggling deployment_strategy never tears down the LB; ECS only actually wires it in via advanced_configuration
-# when deployment_strategy is BLUE_GREEN. Same ECS-managed default_action caveat as the production listener,
-# and same TEMPORARY ignore_changes drop (see the note above thor-nlb-listener) for this one apply.
+# when deployment_strategy is BLUE_GREEN. Same ECS-managed default_action caveat as the production listener.
 resource "aws_lb_listener" "thor-nlb-test-listener" {
   for_each = local.public_services
 
@@ -235,9 +231,15 @@ resource "aws_lb_listener" "thor-nlb-test-listener" {
   certificate_arn   = local.nlb_tls_enabled ? var.nlb_certificate_arn : null
   ssl_policy        = local.nlb_tls_enabled ? "ELBSecurityPolicy-TLS13-1-2-2021-06" : null
 
+  # green, not blue: this listener's job is validating the candidate task set (always the
+  # alternate/green target group in this service's advanced_configuration, see services.tf)
+  # before production traffic shifts.
+  # TEMPORARILY dropped default_action from ignore_changes below to push this corrected value to
+  # the live listener (it was still pointing at blue from creation) — restore it to ignore_changes
+  # right after this apply succeeds, so ECS's live blue/green swaps aren't fought again.
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.thor-nlb-tg-blue[each.key].arn
+    target_group_arn = aws_lb_target_group.thor-nlb-tg-green[each.key].arn
   }
 
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
