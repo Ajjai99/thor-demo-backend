@@ -1,7 +1,7 @@
 {
   "service": "task-api",
   "environment": "dev",
-  "digest": "trialc6mgth.jfrog.io/docker-container-image/task-api@sha256:c16f97c94d79e605acf7e58e3e24786df967fd73d34a3d3f5c36b807affc511c",
-  "commitId": "2356acf64e718d8cda0b045940fa2ffca7c52013",
-  "deployedAt": "2026-08-16T16:23:54Z"
+  "digest": "877969058937.dkr.ecr.us-east-1.amazonaws.com/task-api-dev@sha256:8ead2d2b9dd3822c75d7f04089a32bc03e59316216f981bc3c75b5f119039d87",
+  "commitId": "492e7edff261fd037d8614471525503cd5a891b1",
+  "deployedAt": "2026-08-30T13:25:18Z"
 }
