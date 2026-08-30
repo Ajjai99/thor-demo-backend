@@ -6,6 +6,12 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    # For the short, non-colliding target group name suffixes in nlb.tf — needs no provider
+    # configuration block of its own.
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }
 
