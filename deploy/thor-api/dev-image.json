@@ -1,7 +1,7 @@
 {
   "service": "thor-api",
   "environment": "dev",
-  "digest": "trialc6mgth.jfrog.io/docker-container-image/thor-api@sha256:dd84c487992ce79209af7e9185864a8d89b392f8dea1a73f6ef95390cf253ab8",
-  "commitId": "eb9c39f998a0d3f6c0b4dce994b493a233f34744",
-  "deployedAt": "2026-08-17T01:11:38Z"
+  "digest": "877969058937.dkr.ecr.us-east-1.amazonaws.com/thor-api-dev@sha256:3a362895fe09bf24c77f53490dfad0838095567960a652fd58094da871f626c7",
+  "commitId": "492e7edff261fd037d8614471525503cd5a891b1",
+  "deployedAt": "2026-08-30T13:25:16Z"
 }
