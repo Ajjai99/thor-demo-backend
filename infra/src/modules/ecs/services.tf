@@ -178,8 +178,12 @@ resource "aws_ecs_service" "thor-svc" {
   }
 
   # CI/CD owns task_definition/desired_count; tags/tags_all can't reconcile with Custodian (see main.tf) — ignore all three.
+  # TEMPORARILY dropped task_definition from this list for the container_port 8443 migration — the service's
+  # load_balancer.container_port is actively managed (not ignored), and AWS rejects it unless the task definition
+  # the service is actually running also maps that port. Restore task_definition to ignore_changes right after
+  # this apply succeeds, so CI/CD regains ownership of routine image deploys.
   lifecycle {
-    ignore_changes = [task_definition, desired_count, tags, tags_all]
+    ignore_changes = [desired_count, tags, tags_all]
   }
 
   # Depends on every listener instance (both production and test); zero for services with none — no conditional needed.
