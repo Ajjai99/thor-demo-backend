@@ -32,5 +32,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl \
 
 COPY --from=build /app .
 EXPOSE 8080
-EXPOSE 443
+EXPOSE 8443
 ENTRYPOINT ["dotnet", "Thor.Api.dll"]

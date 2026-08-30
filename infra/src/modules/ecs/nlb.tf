@@ -18,10 +18,11 @@ resource "aws_lb_target_group" "thor-nlb-tg-blue" {
   target_type = "ip"
 
   health_check {
-    # TCP, not HTTP/HTTPS, when TLS is on — AWS's health checker must never attempt to validate
-    # the container's self-signed cert.
-    protocol            = local.nlb_tls_enabled ? "TCP" : "HTTP"
-    path                = local.nlb_tls_enabled ? null : each.value.health_check_path
+    # HTTPS is safe against a self-signed target cert — an NLB target group never validates it
+    # (no chain-of-trust check against either TCP/TLS traffic or HTTP/HTTPS health checks), so an
+    # HTTPS check here still gets a real HTTP response from the app instead of just a TCP handshake.
+    protocol            = local.nlb_tls_enabled ? "HTTPS" : "HTTP"
+    path                = each.value.health_check_path
     healthy_threshold   = 3
     unhealthy_threshold = 3
     interval            = 30
@@ -45,8 +46,9 @@ resource "aws_lb_target_group" "thor-nlb-tg-green" {
   target_type = "ip"
 
   health_check {
-    protocol            = local.nlb_tls_enabled ? "TCP" : "HTTP"
-    path                = local.nlb_tls_enabled ? null : each.value.health_check_path
+    # See the blue target group's health_check block above for why HTTPS is safe here.
+    protocol            = local.nlb_tls_enabled ? "HTTPS" : "HTTP"
+    path                = each.value.health_check_path
     healthy_threshold   = 3
     unhealthy_threshold = 3
     interval            = 30

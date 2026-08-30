@@ -12,7 +12,7 @@ if (!string.IsNullOrEmpty(certPath))
 {
     builder.WebHost.ConfigureKestrel(options =>
     {
-        options.ListenAnyIP(443, listenOptions =>
+        options.ListenAnyIP(8443, listenOptions =>
         {
             listenOptions.UseHttps(new HttpsConnectionAdapterOptions
             {
