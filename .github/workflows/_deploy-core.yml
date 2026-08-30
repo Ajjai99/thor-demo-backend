@@ -69,17 +69,17 @@ jobs:
           role_arn: ${{ inputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || inputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || inputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
           region: ${{ env.AWS_REGION }}
 
-      - uses: ./.github/actions/jfrog-login
-        id: jfrog
-        with:
-          jfrog_hostname: ${{ vars.JFROG_HOSTNAME }}
-          jfrog_username: ${{ vars.JFROG_USERNAME }}
-          jfrog_access_token: ${{ secrets.JFROG_ACCESS_TOKEN }}
+      # - uses: ./.github/actions/jfrog-login
+      #   id: jfrog
+      #   with:
+      #     jfrog_hostname: ${{ vars.JFROG_HOSTNAME }}
+      #     jfrog_username: ${{ vars.JFROG_USERNAME }}
+      #     jfrog_access_token: ${{ secrets.JFROG_ACCESS_TOKEN }}
 
       - name: Set image URIs
         id: image
         run: |
-          echo "jfrog_uri=${{ steps.jfrog.outputs.registry }}/${{ vars.JFROG_DOCKER_REPOSITORY }}/${{ inputs.service }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          # echo "jfrog_uri=${{ steps.jfrog.outputs.registry }}/${{ vars.JFROG_DOCKER_REPOSITORY }}/${{ inputs.service }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
           echo "ecr_uri=${{ steps.ecr.outputs.registry }}/${{ inputs.service }}-dev:${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore & build (.NET)
@@ -115,23 +115,37 @@ jobs:
           fi
 
       # --no-cache avoids stale dependency layers.
-      - name: Build image
-        run: docker build --no-cache -t "${{ steps.image.outputs.jfrog_uri }}" .
+      # - name: Build image
+      #   run: docker build --no-cache -t "${{ steps.image.outputs.jfrog_uri }}" .
 
-      - name: Publish to JFrog
-        run: docker push "${{ steps.image.outputs.jfrog_uri }}"
+      # - name: Publish to JFrog
+      #   run: docker push "${{ steps.image.outputs.jfrog_uri }}"
 
       # Pinned digest, not just the mutable tag — what downstream promotion actually pulls.
-      - name: Capture JFrog digest
+      # - name: Capture JFrog digest
+      #   id: digest
+      #   run: |
+      #     FULL_REF=$(docker inspect --format='{{index .RepoDigests 0}}' "${{ steps.image.outputs.jfrog_uri }}")
+      #     echo "ref=${FULL_REF}" >> "$GITHUB_OUTPUT"
+
+      # - name: Promote into dev's own ECR
+      #   run: |
+      #     docker tag "${{ steps.image.outputs.jfrog_uri }}" "${{ steps.image.outputs.ecr_uri }}"
+      #     docker push "${{ steps.image.outputs.ecr_uri }}"
+
+      # --no-cache avoids stale dependency layers. Builds and pushes straight to dev's own ECR, skipping JFrog.
+      - name: Build image
+        run: docker build --no-cache -t "${{ steps.image.outputs.ecr_uri }}" .
+
+      - name: Push image to ECR
+        run: docker push "${{ steps.image.outputs.ecr_uri }}"
+
+      # Pinned digest, not just the mutable tag — what downstream promotion actually pulls.
+      - name: Capture image digest
         id: digest
         run: |
-          FULL_REF=$(docker inspect --format='{{index .RepoDigests 0}}' "${{ steps.image.outputs.jfrog_uri }}")
+          FULL_REF=$(docker inspect --format='{{index .RepoDigests 0}}' "${{ steps.image.outputs.ecr_uri }}")
           echo "ref=${FULL_REF}" >> "$GITHUB_OUTPUT"
-
-      - name: Promote into dev's own ECR
-        run: |
-          docker tag "${{ steps.image.outputs.jfrog_uri }}" "${{ steps.image.outputs.ecr_uri }}"
-          docker push "${{ steps.image.outputs.ecr_uri }}"
 
       - uses: ./.github/actions/ecs-deploy
         with:
