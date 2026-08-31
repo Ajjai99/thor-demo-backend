@@ -7,9 +7,14 @@ namespace Thor.Authorizer;
 
 public class Function
 {
-    // Stub only — always denies. Real implementation: hash the x-api-key
-    // header, look it up in Aurora via RDS Data API, return Allow with the
-    // matching tenant ID in context, or Deny if no match.
+    // !!! TEMPORARY — STUB ALLOWS EVERY REQUEST, NO KEY CHECK AT ALL !!!
+    // Flipped from unconditional Deny to unconditional Allow to unblock testing the
+    // API Gateway -> VPC Link -> NLB -> thor-api path end to end. This removes API-key
+    // protection entirely for ANY environment that deploys this code — dev, qa, or prod —
+    // since this file is the shared source for all of them.
+    // MUST be replaced with the real implementation (hash the x-api-key header, look it up
+    // in Aurora via RDS Data API, return Allow with the matching tenant ID in context, or
+    // Deny if no match) before qa/prod ever redeploy this Lambda.
     public APIGatewayCustomAuthorizerResponse FunctionHandler(
         APIGatewayCustomAuthorizerRequest request, ILambdaContext context)
     {
@@ -24,7 +29,7 @@ public class Function
                     new APIGatewayCustomAuthorizerPolicy.IAMPolicyStatement
                     {
                         Action = ["execute-api:Invoke"],
-                        Effect = "Deny",
+                        Effect = "Allow",
                         Resource = [request.MethodArn]
                     }
                 ]
