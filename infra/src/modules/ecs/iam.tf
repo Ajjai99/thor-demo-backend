@@ -13,9 +13,10 @@ data "aws_iam_policy_document" "ecs_assume" {
 resource "aws_iam_role" "execution" {
   for_each = local.active_services
 
-  name               = "${local.name_prefix[each.key]}-execution"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
-  tags               = var.tags
+  name                 = "${local.name_prefix[each.key]}-execution"
+  assume_role_policy   = data.aws_iam_policy_document.ecs_assume.json
+  permissions_boundary = var.iam_permissions_boundary_arn
+  tags                 = var.tags
 
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
@@ -51,9 +52,10 @@ resource "aws_iam_role_policy" "execution_secrets" {
 resource "aws_iam_role" "task" {
   for_each = local.active_services
 
-  name               = "${local.name_prefix[each.key]}-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
-  tags               = var.tags
+  name                 = "${local.name_prefix[each.key]}-task"
+  assume_role_policy   = data.aws_iam_policy_document.ecs_assume.json
+  permissions_boundary = var.iam_permissions_boundary_arn
+  tags                 = var.tags
 
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {

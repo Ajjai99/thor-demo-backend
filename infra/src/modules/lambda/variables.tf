@@ -23,6 +23,11 @@ variable "authorizer_salt_secret_arn" {
   description = "Secrets Manager ARN of the PBKDF2 salt — passed to the function as THOR_AUTHORIZER_SALT_SECRET_ID and used to scope secretsmanager:GetSecretValue"
 }
 
+variable "iam_permissions_boundary_arn" {
+  type        = string
+  description = "ARN of the Console-created thor-<environment>-role-boundary policy (see docs/infra_pipeline_setup_guide.md) — required on the authorizer's IAM role's permissions_boundary argument, or the deploy role's own iam:CreateRole grant rejects the call."
+}
+
 variable "tags" {
   type        = map(string)
   description = "Additional resource-specific tags"
