@@ -179,7 +179,7 @@ resource "aws_ecs_service" "thor-svc" {
 
   # CI/CD owns task_definition/desired_count; tags/tags_all can't reconcile with Custodian (see main.tf) — ignore all three.
   lifecycle {
-    ignore_changes = [desired_count, tags, tags_all]
+    ignore_changes = [task_definition, desired_count, tags, tags_all]
   }
 
   # Depends on every listener instance (both production and test); zero for services with none — no conditional needed.

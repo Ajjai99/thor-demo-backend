@@ -6,6 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
     <AWSProjectType>Lambda</AWSProjectType>
+    <!-- dotnet publish skips this for OutputType=Library (this project's default) unless told
+         otherwise — Lambda's .NET runtime fails to boot without it. -->
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
   </PropertyGroup>
 
   <ItemGroup>
