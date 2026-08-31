@@ -5,6 +5,10 @@ terraform {
   required_version = ">= 1.15"
 }
 
+locals {
+  iam_permissions_boundary_arn = "arn:aws:iam::${var.account_id}:policy/thor-${var.environment}-role-boundary"
+}
+
 module "network" {
   source = "./modules/network"
 
@@ -46,12 +50,13 @@ locals {
 module "ecs" {
   source = "./modules/ecs"
 
-  environment               = var.environment
-  enable_compute            = var.enable_compute
-  vpc_id                    = local.vpc_id
-  vpc_cidr                  = local.vpc_cidr_effective
-  private_subnet_ids        = local.private_subnet_ids
-  enable_container_insights = var.enable_container_insights
+  environment                  = var.environment
+  enable_compute               = var.enable_compute
+  vpc_id                       = local.vpc_id
+  vpc_cidr                     = local.vpc_cidr_effective
+  private_subnet_ids           = local.private_subnet_ids
+  enable_container_insights    = var.enable_container_insights
+  iam_permissions_boundary_arn = local.iam_permissions_boundary_arn
 
   services = local.services_with_shared_secrets
 
@@ -195,10 +200,11 @@ module "secrets" {
 module "lambda" {
   source = "./modules/lambda"
 
-  environment          = var.environment
-  aurora_cluster_arn   = module.aurora.cluster_arn
-  aurora_secret_arn    = module.aurora.master_user_secret_arn
-  aurora_database_name = module.aurora.database_name
+  environment                  = var.environment
+  aurora_cluster_arn           = module.aurora.cluster_arn
+  aurora_secret_arn            = module.aurora.master_user_secret_arn
+  aurora_database_name         = module.aurora.database_name
+  iam_permissions_boundary_arn = local.iam_permissions_boundary_arn
 
   authorizer_salt_secret_arn = module.secrets.authorizer_salt_secret_arn
 
@@ -239,10 +245,11 @@ module "aurora" {
 module "rds_proxy" {
   source = "./modules/rds_proxy"
 
-  environment        = var.environment
-  vpc_id             = local.vpc_id
-  vpc_cidr           = local.vpc_cidr_effective
-  private_subnet_ids = local.private_subnet_ids
+  environment                  = var.environment
+  vpc_id                       = local.vpc_id
+  vpc_cidr                     = local.vpc_cidr_effective
+  private_subnet_ids           = local.private_subnet_ids
+  iam_permissions_boundary_arn = local.iam_permissions_boundary_arn
 
   aurora_cluster_identifier = module.aurora.cluster_identifier
   aurora_secret_arn         = module.aurora.master_user_secret_arn

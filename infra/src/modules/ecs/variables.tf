@@ -30,6 +30,11 @@ variable "enable_compute" {
   default     = true
 }
 
+variable "iam_permissions_boundary_arn" {
+  type        = string
+  description = "ARN of the Console-created thor-<environment>-role-boundary policy (see docs/infra_pipeline_setup_guide.md) — required on every thor-<environment>-* role's permissions_boundary argument, or the deploy role's own iam:CreateRole grant rejects the call."
+}
+
 variable "services" {
   description = "Per-service configuration, keyed by service name (thor-api, task-api, intelligence-engine). expose_via_nlb=true gets a private NLB (nlb.tf, thor-api only) reached via VPC Link from API Gateway, not directly from the internet; services with expose_via_nlb=false accept traffic only from the public services' security groups, reachable internally via Service Connect using the map key as the client_alias dns_name. deployment_strategy=BLUE_GREEN is a per-deploy toggle (deployment_strategy_plan.md reserves it for DB-schema-change deploys) — for a publicly-exposed service it shifts the NLB's production listener between blue/green target groups; for an internal service it's a plain task-set swap. The NLB targets the app's own container_port directly — plain TCP/HTTP by default, or TLS re-encryption to a self-signed cert on that same port when var.nlb_certificate_arn is set (see nlb.tf's nlb_tls_enabled)."
   type = map(object({

@@ -3,6 +3,11 @@ variable "environment" {
   description = "Environment name (dev, qa, prod)"
 }
 
+variable "account_id" {
+  type        = string
+  description = "AWS account ID this environment deploys into — root.hcl's account_map, supplied via its inputs block. Used to build the thor-<environment>-role-boundary policy's ARN (main.tf) without hardcoding it."
+}
+
 # --- network ---
 
 variable "vpc_cidr" {

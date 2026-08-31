@@ -18,6 +18,11 @@ variable "private_subnet_ids" {
   description = "Private subnets for the proxy (needs at least 2, in different AZs)"
 }
 
+variable "iam_permissions_boundary_arn" {
+  type        = string
+  description = "ARN of the Console-created thor-<environment>-role-boundary policy (see docs/infra_pipeline_setup_guide.md) — required on the proxy's IAM role's permissions_boundary argument, or the deploy role's own iam:CreateRole grant rejects the call."
+}
+
 variable "aurora_cluster_identifier" {
   type        = string
   description = "Aurora cluster identifier the proxy targets"

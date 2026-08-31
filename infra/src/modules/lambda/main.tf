@@ -36,9 +36,10 @@ data "aws_iam_policy_document" "thor-lambda-authorizer-assume-policy-document" {
 }
 
 resource "aws_iam_role" "thor-lambda-authorizer-role" {
-  name               = "${local.name_prefix}-role"
-  assume_role_policy = data.aws_iam_policy_document.thor-lambda-authorizer-assume-policy-document.json
-  tags               = var.tags
+  name                 = "${local.name_prefix}-role"
+  assume_role_policy   = data.aws_iam_policy_document.thor-lambda-authorizer-assume-policy-document.json
+  permissions_boundary = var.iam_permissions_boundary_arn
+  tags                 = var.tags
 
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
