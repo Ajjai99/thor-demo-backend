@@ -234,9 +234,6 @@ resource "aws_lb_listener" "thor-nlb-test-listener" {
   # green, not blue: this listener's job is validating the candidate task set (always the
   # alternate/green target group in this service's advanced_configuration, see services.tf)
   # before production traffic shifts.
-  # TEMPORARILY dropped default_action from ignore_changes below to push this corrected value to
-  # the live listener (it was still pointing at blue from creation) — restore it to ignore_changes
-  # right after this apply succeeds, so ECS's live blue/green swaps aren't fought again.
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.thor-nlb-tg-green[each.key].arn
@@ -244,7 +241,7 @@ resource "aws_lb_listener" "thor-nlb-test-listener" {
 
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
-    ignore_changes = [tags, tags_all]
+    ignore_changes = [default_action, tags, tags_all]
   }
 
   tags = var.tags
