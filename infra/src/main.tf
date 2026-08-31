@@ -5,10 +5,8 @@ terraform {
   required_version = ">= 1.15"
 }
 
-data "aws_caller_identity" "current" {}
-
 locals {
-  iam_permissions_boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/thor-${var.environment}-role-boundary"
+  iam_permissions_boundary_arn = "arn:aws:iam::${var.account_id}:policy/thor-${var.environment}-role-boundary"
 }
 
 module "network" {

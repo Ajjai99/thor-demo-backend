@@ -69,6 +69,7 @@ EOF
 
 inputs = {
   environment = local.environment
+  account_id  = local.account.account_id
 }
 
 # dotnet publish before plan/apply/destroy, so archive_file has real code to zip. Skippable via SKIP_LAMBDA_PUBLISH=true — used by CI's apply job, which already has the zip and doesn't need a rebuild.
