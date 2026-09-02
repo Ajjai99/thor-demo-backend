@@ -61,7 +61,7 @@ data "aws_iam_policy_document" "state_machine_permissions" {
     ]
   }
 
-  # Required for the .sync2 ECS integration: Step Functions auto-manages a hidden, fixed-name
+  # Required for the .sync ECS integration: Step Functions auto-manages a hidden, fixed-name
   # EventBridge rule to detect when the task stops.
   statement {
     actions   = ["events:PutTargets", "events:PutRule", "events:DescribeRule"]

@@ -10,13 +10,13 @@ locals {
   # Falls back to this module's own ECR repo at "latest" when unset.
   resolved_ingestion_image = var.ingestion_container_image != "" ? var.ingestion_container_image : "${aws_ecr_repository.ecr_ingestion.repository_url}:latest"
 
-  # Common ecs:runTask.sync2 Task-state shape, one per THOR_STEP — Next/{extract-stage,promote,...}
+  # Common ecs:runTask.sync Task-state shape, one per THOR_STEP — Next/{extract-stage,promote,...}
   # is merged in per-state below since it differs per state. Guarded by ingestion_active so this
   # never indexes the (empty when inactive) for_each task-definition map.
   ingestion_task_states = local.ingestion_active ? {
     for step in local.ingestion_steps : step => {
       Type     = "Task"
-      Resource = "arn:aws:states:::ecs:runTask.sync2"
+      Resource = "arn:aws:states:::ecs:runTask.sync"
       Parameters = {
         Cluster        = aws_ecs_cluster.ecs_ingestion_cluster[0].name
         TaskDefinition = aws_ecs_task_definition.ecs_ingestion_task_definition[step].arn
