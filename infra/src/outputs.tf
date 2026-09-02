@@ -94,3 +94,16 @@ output "frontend_distribution_id" {
 output "frontend_distribution_domain_name" {
   value = var.enable_frontend ? module.frontend[0].distribution_domain_name : null
 }
+
+output "ingestion_ecr_repository_url" {
+  description = "Populated regardless of enable_ingestion — a repo must exist before the flag can turn on"
+  value       = module.ingestion.ecr_repository_url
+}
+
+output "ingestion_queue_url" {
+  value = var.enable_ingestion ? module.ingestion.queue_url : null
+}
+
+output "ingestion_state_machine_arn" {
+  value = var.enable_ingestion ? module.ingestion.state_machine_arn : null
+}

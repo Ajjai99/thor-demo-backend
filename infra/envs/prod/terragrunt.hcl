@@ -138,5 +138,9 @@ inputs = {
   # get_repo_root() stays valid across any Terragrunt cache copy. dotnet publish must have already written here.
   authorizer_source_dir = "${get_repo_root()}/backend/functions/Thor.Authorizer/publish"
 
+  # --- ingestion pipeline ---
+  enable_ingestion           = false
+  create_manifest_source_dir = "${get_repo_root()}/backend/functions/CreateManifest/publish"
+
   tags = {}
 }

@@ -262,4 +262,23 @@ module "rds_proxy" {
   tags = var.tags
 }
 
-# RDS Proxy and Neptune: future work.
+# S3 -> SQS -> EventBridge Pipe -> CreateManifest (Lambda) -> Step Functions (runs the ingestion
+# ECS task on its own dedicated cluster, isolated from module.ecs's shared cluster, then decides
+# retry-vs-DLQ).
+module "ingestion" {
+  source = "./modules/ingestion"
+
+  environment                  = var.environment
+  account_id                   = var.account_id
+  aws_region                   = var.aws_region
+  enable_ingestion             = var.enable_ingestion
+  vpc_id                       = local.vpc_id
+  private_subnet_ids           = local.private_subnet_ids
+  enable_container_insights    = var.enable_container_insights
+  iam_permissions_boundary_arn = local.iam_permissions_boundary_arn
+  create_manifest_source_dir   = var.create_manifest_source_dir
+
+  tags = var.tags
+}
+
+# Neptune: future work.

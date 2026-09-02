@@ -8,6 +8,11 @@ variable "account_id" {
   description = "AWS account ID this environment deploys into — root.hcl's account_map, supplied via its inputs block. Used to build the thor-<environment>-role-boundary policy's ARN (main.tf) without hardcoding it."
 }
 
+variable "aws_region" {
+  type        = string
+  description = "AWS region this environment deploys into — root.hcl's account_map, supplied via its inputs block. Same value the generated provider block is already configured with; passed through explicitly so modules can reference it (e.g. for awslogs-region in a container's logConfiguration) without a live aws_region data source lookup."
+}
+
 # --- network ---
 
 variable "vpc_cidr" {
@@ -38,6 +43,12 @@ variable "enable_compute" {
   type        = bool
   description = "Whether to create the three ECS services (task defs, ECS services, NLB/target groups, per-service IAM/SG). The ECS cluster, Service Connect namespace, and ECR repos are created regardless of this flag — set false to bring up an environment's cluster/registry only, before real images exist to reference."
   default     = true
+}
+
+variable "enable_ingestion" {
+  type        = bool
+  description = "Whether to create the ingestion pipeline (S3 -> SQS -> EventBridge Pipe -> CreateManifest Lambda -> Step Functions -> ECS ingestion task, see modules/ingestion). The ECR repo is created regardless of this flag, so an image can be pushed before turning it on — everything else stays off until deliberately enabled."
+  default     = false
 }
 
 variable "services" {
@@ -171,6 +182,11 @@ variable "authorizer_lambda_memory_size" {
 variable "authorizer_source_dir" {
   type        = string
   description = "Absolute path to lambda authorizer code"
+}
+
+variable "create_manifest_source_dir" {
+  type        = string
+  description = "Absolute path to CreateManifest's dotnet publish output"
 }
 
 # --- database (Aurora PostgreSQL, module.aurora — task-api's database) ---
