@@ -1,7 +1,7 @@
 locals {
   name_prefix      = "thor-${var.environment}-ingestion"
   ingestion_active = var.enable_ingestion
-  bucket_name      = "thor-ingestion-${var.environment}-${var.account_id}"
+  bucket_name      = "thor-${var.environment}-ingestion-${var.account_id}"
 
   # One THOR_STEP per Thor.Workflows.Ingestion container entry point, in pipeline order —
   # see ecs_task.tf/state_machine.tf.
