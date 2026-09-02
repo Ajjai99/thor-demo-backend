@@ -1,4 +1,4 @@
-# One-shot Fargate task Step Functions runs on demand (ecs:runTask.sync2, state_machine.tf), on
+# One-shot Fargate task Step Functions runs on demand (ecs:runTask.sync, state_machine.tf), on
 # its own dedicated cluster isolated from modules/ecs's shared cluster. No aws_ecs_service — this
 # isn't a continuously-running service.
 
