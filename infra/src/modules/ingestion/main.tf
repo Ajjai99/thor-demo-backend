@@ -1,9 +1,5 @@
 # Ingestion workflow: S3 -> SQS -> EventBridge Pipe -> CreateManifest (Lambda) -> Step Functions
-# (runs the ingestion ECS task, then decides retry-vs-DLQ). See pipe.tf/lambda.tf/state_machine.tf.
-#
-# Diagram note (Untitled.png's "Ingestion Workflow" box): "EventBridge Pipe to Batch" does NOT
-# mean AWS Batch — "batch" is the Pipe's batched SQS delivery setting. The Pipe's real target is
-# CreateManifest, invoked directly and synchronously; AWS Batch plays no role in this workflow.
+# -> ECS task, then retry-vs-DLQ. See pipe.tf/lambda.tf/state_machine.tf.
 
 terraform {
   required_version = ">= 1.15"
@@ -18,12 +14,6 @@ terraform {
       version = "~> 2.0"
     }
   }
-}
-
-locals {
-  name_prefix      = "thor-${var.environment}-ingestion"
-  ingestion_active = var.enable_ingestion
-  bucket_name      = "thor-ingestion-${var.environment}-${var.account_id}"
 }
 
 resource "aws_s3_bucket" "s3_ingestion" {
@@ -91,12 +81,9 @@ resource "aws_sqs_queue_redrive_allow_policy" "sqs_ingestion_dlq" {
   })
 }
 
-# maxReceiveCount is a backstop for a different failure class than the state machine's own
-# retry_count field: it only fires if the EventBridge Pipe itself repeatedly fails to deliver a
-# message to CreateManifest before Step Functions ever gets involved. Deliberately set above
-# var.max_retry_count, since a message the state machine re-sends via sqs:SendMessage gets a
-# fresh ApproximateReceiveCount and would never trip this counter on its own — see
-# state_machine.tf for the retry_count-based decision that normally governs the requeue loop.
+# Backstop for repeated Pipe delivery failures only (separate from the state machine's own
+# retry_count loop in state_machine.tf) — kept above var.max_retry_count since requeued messages
+# never trip this counter on their own.
 resource "aws_sqs_queue" "sqs_ingestion" {
   count = local.ingestion_active ? 1 : 0
 
@@ -114,8 +101,7 @@ resource "aws_sqs_queue" "sqs_ingestion" {
   }
 }
 
-# Required for S3 to be able to deliver bucket notifications to this queue at all — without this,
-# aws_s3_bucket_notification silently gets zero events delivered, no error at apply time.
+# Required for S3 bucket notifications to reach this queue — without it, events silently never arrive.
 data "aws_iam_policy_document" "sqs_ingestion_queue_policy" {
   count = local.ingestion_active ? 1 : 0
 

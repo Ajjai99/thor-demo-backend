@@ -1,6 +1,5 @@
-# source_dir is absolute (via get_repo_root(), set in terragrunt.hcl) since Terragrunt only
-# copies infra/src, not backend/. Requires dotnet publish into
-# create_manifest_source_dir first — Terraform zips, it doesn't compile.
+# source_dir is absolute since Terragrunt only copies infra/src, not backend/. Requires dotnet
+# publish into create_manifest_source_dir first — Terraform zips, it doesn't compile.
 data "archive_file" "manifest_lambda_archive" {
   type        = "zip"
   source_dir  = var.create_manifest_source_dir
@@ -39,10 +38,8 @@ resource "aws_iam_role_policy_attachment" "manifest_lambda_policy_attachment" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# CreateManifest's own code starts the Step Functions execution itself (see
-# backend/functions/CreateManifest) — one policy for everything beyond basic execution,
-# add more statements here as the function needs more permissions, not a new aws_iam_role_policy
-# per permission.
+# CreateManifest itself starts the Step Functions execution. One policy for everything beyond
+# basic execution — add statements here as needed, not a new policy resource.
 data "aws_iam_policy_document" "manifest_lambda_role_permissions_document" {
   count = local.ingestion_active ? 1 : 0
 

@@ -144,7 +144,7 @@ inputs = {
   authorizer_source_dir = "${get_repo_root()}/backend/functions/Thor.Authorizer/publish"
 
   # --- ingestion pipeline ---
-  enable_ingestion           = false
+  enable_ingestion           = true
   create_manifest_source_dir = "${get_repo_root()}/backend/functions/CreateManifest/publish"
 
   tags = {}

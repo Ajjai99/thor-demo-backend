@@ -23,8 +23,7 @@ resource "aws_iam_role" "pipe_role" {
   }
 }
 
-# One policy for everything the pipe needs — add more statements here as it needs more, not a
-# new aws_iam_role_policy per permission.
+# One policy for everything the pipe needs — add statements here as needed, not a new policy resource.
 data "aws_iam_policy_document" "pipe_permissions_document" {
   count = local.ingestion_active ? 1 : 0
 
@@ -47,8 +46,7 @@ resource "aws_iam_role_policy" "pipe_policy" {
   policy = data.aws_iam_policy_document.pipe_permissions_document[0].json
 }
 
-# Source: the ingestion queue. Target: CreateManifest, invoked directly and synchronously — see
-# main.tf's header comment for why this isn't AWS Batch despite the diagram's "to Batch" label.
+# Target: CreateManifest, invoked directly and synchronously.
 resource "aws_pipes_pipe" "pipe_ingestion_pipes" {
   count = local.ingestion_active ? 1 : 0
 

@@ -1,8 +1,6 @@
-# The actual ingestion processing work — a one-shot Fargate task Step Functions runs on demand
-# via ecs:runTask.sync2 (state_machine.tf), on this module's own dedicated cluster (isolated from
-# modules/ecs's shared thor-<environment> cluster on purpose — separate blast radius/Container
-# Insights view for ingestion). No aws_ecs_service here — this isn't a continuously-running
-# service, so none of modules/ecs's service/load-balancer/deployment machinery applies.
+# One-shot Fargate task Step Functions runs on demand (ecs:runTask.sync2, state_machine.tf), on
+# its own dedicated cluster isolated from modules/ecs's shared cluster. No aws_ecs_service — this
+# isn't a continuously-running service.
 
 resource "aws_ecs_cluster" "ecs_ingestion_cluster" {
   count = local.ingestion_active ? 1 : 0
@@ -108,8 +106,7 @@ resource "aws_iam_role" "ingestion_task_role" {
   }
 }
 
-# The container's own runtime permissions — add more statements here as it needs more, not a new
-# aws_iam_role_policy per permission.
+# Container's own runtime permissions — add statements here as needed, not a new policy resource.
 data "aws_iam_policy_document" "ingestion_task_permissions_document" {
   count = local.ingestion_active ? 1 : 0
 
@@ -127,16 +124,14 @@ resource "aws_iam_role_policy" "ingestion_task_permissions" {
   policy = data.aws_iam_policy_document.ingestion_task_permissions_document[0].json
 }
 
-locals {
-  # Falls back to this module's own ECR repo at "latest" when unset — same fallback idiom as
-  # modules/ecs/services.tf's resolved_image.
-  resolved_ingestion_image = var.ingestion_container_image != "" ? var.ingestion_container_image : "${aws_ecr_repository.ecr_ingestion.repository_url}:latest"
-}
-
+# One task definition per THOR_STEP, all from the same image (Thor.Workflows.Ingestion is one
+# Docker image, four entry points) — baking THOR_STEP into the task def (not just a per-invocation
+# override) lets any stage be run standalone via ecs:RunTask without Step Functions. THOR_INPUT is
+# still supplied per-invocation by state_machine.tf, since the payload varies per execution.
 resource "aws_ecs_task_definition" "ecs_ingestion_task_definition" {
-  count = local.ingestion_active ? 1 : 0
+  for_each = local.ingestion_active ? toset(local.ingestion_steps) : []
 
-  family                   = local.name_prefix
+  family                   = "${local.name_prefix}-${each.key}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = var.ingestion_task_cpu
@@ -150,12 +145,16 @@ resource "aws_ecs_task_definition" "ecs_ingestion_task_definition" {
       image     = local.resolved_ingestion_image
       essential = true
 
+      environment = [
+        { name = "THOR_STEP", value = each.key }
+      ]
+
       logConfiguration = {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = aws_cloudwatch_log_group.ingestion_task_log_group[0].name
           "awslogs-region"        = var.aws_region
-          "awslogs-stream-prefix" = "ingestion"
+          "awslogs-stream-prefix" = each.key
         }
       }
     }

@@ -27,6 +27,7 @@ output "create_manifest_function_arn" {
   value = var.enable_ingestion ? aws_lambda_function.manifest_lambda_function[0].arn : null
 }
 
-output "ingestion_task_definition_arn" {
-  value = var.enable_ingestion ? aws_ecs_task_definition.ecs_ingestion_task_definition[0].arn : null
+output "ingestion_task_definition_arns" {
+  description = "Map of THOR_STEP -> its ECS task definition ARN"
+  value       = var.enable_ingestion ? { for k, v in aws_ecs_task_definition.ecs_ingestion_task_definition : k => v.arn } : null
 }

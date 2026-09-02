@@ -36,25 +36,23 @@ resource "aws_iam_role" "state_machine_role" {
   }
 }
 
-# One policy for everything the state machine needs — add more statements here as it needs more,
-# not a new aws_iam_role_policy per permission.
+# One policy for everything the state machine needs — add statements here as needed, not a new policy resource.
 data "aws_iam_policy_document" "state_machine_permissions" {
   count = local.ingestion_active ? 1 : 0
 
   statement {
     actions   = ["ecs:RunTask"]
-    resources = [aws_ecs_task_definition.ecs_ingestion_task_definition[0].arn]
+    resources = [for step in local.ingestion_steps : aws_ecs_task_definition.ecs_ingestion_task_definition[step].arn]
   }
 
-  # ecs:StopTask/DescribeTasks aren't resource-scopable to a specific task (the task's own ARN
-  # doesn't exist until RunTask creates it) — Resource: "*" per AWS's own documented requirement.
+  # ecs:StopTask/DescribeTasks aren't resource-scopable — the task ARN doesn't exist until RunTask
+  # creates it, so "*" is required.
   statement {
     actions   = ["ecs:StopTask", "ecs:DescribeTasks"]
     resources = ["*"]
   }
 
-  # Step Functions passes both of the ingestion task's own roles to ECS when it starts the task
-  # on the state machine's behalf.
+  # Step Functions passes both ingestion task roles to ECS when starting the task.
   statement {
     actions = ["iam:PassRole"]
     resources = [
@@ -63,9 +61,8 @@ data "aws_iam_policy_document" "state_machine_permissions" {
     ]
   }
 
-  # Real, easy-to-miss AWS requirement for the .sync/.sync2 ECS integration: Step Functions
-  # auto-manages a hidden EventBridge rule (this fixed, AWS-owned name) to learn when the task
-  # stops, and needs these three actions scoped to it to do so.
+  # Required for the .sync2 ECS integration: Step Functions auto-manages a hidden, fixed-name
+  # EventBridge rule to detect when the task stops.
   statement {
     actions   = ["events:PutTargets", "events:PutRule", "events:DescribeRule"]
     resources = ["arn:aws:events:*:*:rule/StepFunctionsGetEventsForECSTaskRule"]
@@ -73,12 +70,10 @@ data "aws_iam_policy_document" "state_machine_permissions" {
 
   statement {
     actions   = ["sqs:SendMessage"]
-    resources = [aws_sqs_queue.sqs_ingestion[0].arn, aws_sqs_queue.sqs_ingestion_dlq[0].arn]
+    resources = [aws_sqs_queue.sqs_ingestion_dlq[0].arn]
   }
 
-  # Account-level log-delivery API Step Functions' own CloudWatch Logs integration requires —
-  # not resource-scopable, same exception class as this repo's existing logs:DescribeLogGroups
-  # grant elsewhere.
+  # Account-level log-delivery API Step Functions' logging integration requires — not resource-scopable.
   statement {
     actions = [
       "logs:CreateLogDelivery",
@@ -102,9 +97,10 @@ resource "aws_iam_role_policy" "state_machine_policy" {
   policy = data.aws_iam_policy_document.state_machine_permissions[0].json
 }
 
-# Runs the ingestion ECS task (only once CreateManifest reports success), then decides whether a
-# failure should requeue to the ingestion queue or go to the DLQ — see main.tf's header comment
-# for the overall flow this implements.
+# Runs Thor.Workflows.Ingestion's 4 steps in order (extract-stage -> promote -> graph-load-start
+# -> graph-load-poll), each its own ECS task carrying the same IngestionRequest payload unchanged.
+# Every step is independently idempotent (see docs/architecture/ingestion_workflow.md on thor-50),
+# so a failed step retries in place before escalating straight to the DLQ — no whole-pipeline restart.
 resource "aws_sfn_state_machine" "sfn_ingestion" {
   count = local.ingestion_active ? 1 : 0
 
@@ -112,77 +108,13 @@ resource "aws_sfn_state_machine" "sfn_ingestion" {
   role_arn = aws_iam_role.state_machine_role[0].arn
 
   definition = jsonencode({
-    Comment = "Ingestion workflow: run the ECS ingestion task on CreateManifest success, then requeue or DLQ on failure."
-    StartAt = "EvaluateManifestOutcome"
+    Comment = "Ingestion workflow: extract-stage -> promote -> graph-load-start -> graph-load-poll, each retried in place before escalating to the DLQ."
+    StartAt = "RunExtractAndStage"
     States = {
-      EvaluateManifestOutcome = {
-        Type = "Choice"
-        Choices = [
-          {
-            Variable     = "$.status"
-            StringEquals = "success"
-            Next         = "RunIngestionTask"
-          }
-        ]
-        Default = "EvaluateRetryCount"
-      }
-
-      RunIngestionTask = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::ecs:runTask.sync2"
-        Parameters = {
-          Cluster        = aws_ecs_cluster.ecs_ingestion_cluster[0].name
-          TaskDefinition = aws_ecs_task_definition.ecs_ingestion_task_definition[0].arn
-          LaunchType     = "FARGATE"
-          NetworkConfiguration = {
-            AwsvpcConfiguration = {
-              Subnets        = var.private_subnet_ids
-              SecurityGroups = [aws_security_group.ingestion_task_sg[0].id]
-              AssignPublicIp = "DISABLED"
-            }
-          }
-          Overrides = {
-            "ContainerOverrides" = [
-              {
-                Name = "ingestion"
-                Environment = [
-                  { "Name" : "S3_BUCKET", "Value.$" : "$.bucket" },
-                  { "Name" : "S3_KEY", "Value.$" : "$.key" },
-                ]
-              }
-            ]
-          }
-        }
-        Catch = [
-          {
-            ErrorEquals = ["States.ALL"]
-            Next        = "EvaluateRetryCount"
-          }
-        ]
-        Next = "WorkflowSucceeded"
-      }
-
-      EvaluateRetryCount = {
-        Type = "Choice"
-        Choices = [
-          {
-            Variable        = "$.retry_count"
-            NumericLessThan = var.max_retry_count
-            Next            = "RequeueToIngestionQueue"
-          }
-        ]
-        Default = "SendToDeadLetterQueue"
-      }
-
-      RequeueToIngestionQueue = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::sqs:sendMessage"
-        Parameters = {
-          QueueUrl        = aws_sqs_queue.sqs_ingestion[0].id
-          "MessageBody.$" = "$"
-        }
-        End = true
-      }
+      RunExtractAndStage = merge(local.ingestion_task_states["extract-stage"], { Next = "RunPromote" })
+      RunPromote         = merge(local.ingestion_task_states["promote"], { Next = "RunGraphLoadStart" })
+      RunGraphLoadStart  = merge(local.ingestion_task_states["graph-load-start"], { Next = "RunGraphLoadPoll" })
+      RunGraphLoadPoll   = merge(local.ingestion_task_states["graph-load-poll"], { Next = "WorkflowSucceeded" })
 
       SendToDeadLetterQueue = {
         Type     = "Task"

@@ -5,17 +5,17 @@ variable "environment" {
 
 variable "account_id" {
   type        = string
-  description = "AWS account ID this environment deploys into — root.hcl's account_map, supplied via var.account_id at the root. Used to build the ingestion bucket's globally-unique name without a live aws_caller_identity lookup, same convention as the permissions boundary ARN in infra/src/main.tf."
+  description = "AWS account ID for this environment — used to build the ingestion bucket's globally-unique name."
 }
 
 variable "aws_region" {
   type        = string
-  description = "AWS region this environment deploys into — root.hcl's account_map, supplied via var.aws_region at the root. Used for the ingestion ECS task's awslogs-region log driver option without a live aws_region data source lookup."
+  description = "AWS region for this environment — used for the ingestion ECS task's awslogs-region log driver option."
 }
 
 variable "enable_ingestion" {
   type        = bool
-  description = "Whether to create the ingestion pipeline (S3 -> SQS -> EventBridge Pipe -> CreateManifest Lambda -> Step Functions -> ECS ingestion task). The ECR repo is created regardless of this flag, so an image can be pushed before turning it on — everything else stays off until deliberately enabled."
+  description = "Whether to create the ingestion pipeline. The ECR repo is created regardless, so an image can be pushed before enabling."
 }
 
 variable "vpc_id" {
@@ -25,17 +25,17 @@ variable "vpc_id" {
 
 variable "private_subnet_ids" {
   type        = list(string)
-  description = "Private subnets the ingestion ECS task runs in — passed straight into the state machine's ecs:runTask.sync2 NetworkConfiguration"
+  description = "Private subnets the ingestion ECS task runs in"
 }
 
 variable "enable_container_insights" {
   type        = bool
-  description = "Enable ECS Container Insights on this module's own dedicated ingestion cluster — same root-level variable module.ecs uses for the shared cluster, threaded through separately since this cluster is isolated on purpose"
+  description = "Enable ECS Container Insights on this module's own dedicated ingestion cluster"
 }
 
 variable "iam_permissions_boundary_arn" {
   type        = string
-  description = "ARN of the Console-created thor-<environment>-role-boundary policy (see docs/infra_pipeline_setup_guide.md) — required on this module's five IAM roles' (Pipe, CreateManifest, Step Functions, ingestion execution, ingestion task) permissions_boundary argument, or the deploy role's own iam:CreateRole grant rejects the call."
+  description = "ARN of the account's Console-created thor-<environment>-role-boundary policy — required on this module's IAM roles' permissions_boundary argument, or role creation is rejected."
 }
 
 variable "tags" {
@@ -46,25 +46,25 @@ variable "tags" {
 
 variable "max_retry_count" {
   type        = number
-  description = "How many times the state machine will requeue a failed ingestion (CreateManifest or the ECS task failing) back onto the ingestion queue before giving up and sending it to the DLQ instead — this is the retry_count field carried in the message body, not SQS's own native redrive threshold (see sqs_max_receive_count)."
+  description = "MaxAttempts for each ingestion step's own Step Functions Retry policy — retries just the failed step in place (every step is independently idempotent) before escalating to the DLQ. Not related to SQS's native redrive (see sqs_max_receive_count), which only covers Pipe delivery failures."
   default     = 3
 }
 
 variable "sqs_visibility_timeout_seconds" {
   type        = number
-  description = "How long a message is hidden from other receivers once the EventBridge Pipe picks it up — must comfortably exceed create_manifest_timeout, since the Pipe holds the message until CreateManifest's synchronous invocation returns."
+  description = "How long a message is hidden once the Pipe picks it up — must exceed create_manifest_timeout, since the Pipe holds the message for the full synchronous invocation."
   default     = 60
 }
 
 variable "sqs_max_receive_count" {
   type        = number
-  description = "SQS's own native redrive threshold to the DLQ — kept above max_retry_count so it only fires when the EventBridge Pipe itself repeatedly fails to deliver a message to CreateManifest, a different failure class than the state machine's own retry_count-driven requeue loop (a message the state machine re-sends via sqs:SendMessage gets a fresh ApproximateReceiveCount and would never trip this counter on its own)."
+  description = "SQS's native redrive threshold to the DLQ — kept above max_retry_count so it only fires on repeated Pipe delivery failures, a separate failure class from the state machine's own retry loop."
   default     = 5
 }
 
 variable "pipe_batch_size" {
   type        = number
-  description = "How many SQS messages the EventBridge Pipe delivers to CreateManifest per invocation — the diagram's 'batch' label refers to this setting, not AWS Batch the service. Kept at 1 by default to keep CreateManifest's per-file logic simple."
+  description = "How many SQS messages the Pipe delivers to CreateManifest per invocation. Kept at 1 by default to keep CreateManifest's per-file logic simple."
   default     = 1
 }
 
@@ -76,12 +76,12 @@ variable "log_retention_days" {
 
 variable "create_manifest_source_dir" {
   type        = string
-  description = "Absolute path (via get_repo_root(), set in terragrunt.hcl) to CreateManifest's dotnet publish output — Terragrunt only copies infra/src, not backend/, so this can't be a relative path. data.archive_file zips it, it doesn't compile it, so dotnet publish must have already written here (see scripts/publish-lambda-functions.sh)."
+  description = "Absolute path to CreateManifest's dotnet publish output — must be absolute since Terragrunt only copies infra/src. data.archive_file zips it; dotnet publish must already have written here."
 }
 
 variable "create_manifest_timeout" {
   type        = number
-  description = "CreateManifest Lambda timeout in seconds — must stay under sqs_visibility_timeout_seconds, since the Pipe holds the SQS message for the full duration of this synchronous invocation"
+  description = "CreateManifest Lambda timeout in seconds — must stay under sqs_visibility_timeout_seconds."
   default     = 30
 }
 
@@ -93,7 +93,7 @@ variable "create_manifest_memory_size" {
 
 variable "ingestion_container_image" {
   type        = string
-  description = "Pinned image URI for the ingestion ECS task; \"\" (default) falls back to this module's own ECR repo at :latest, same fallback idiom as modules/ecs/services.tf's resolved_image"
+  description = "Pinned image URI for the ingestion ECS task; \"\" (default) falls back to this module's own ECR repo at :latest."
   default     = ""
 }
 
