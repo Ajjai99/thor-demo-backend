@@ -23,7 +23,7 @@ locals {
 }
 
 resource "aws_ecs_cluster" "thor-ecs-cluster" {
-  name = "thor-${var.environment}"
+  name = "thor-${var.environment}-cluster"
 
   setting {
     name  = "containerInsights"
