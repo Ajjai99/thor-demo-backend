@@ -96,6 +96,9 @@ resource "aws_sqs_queue" "sqs_ingestion" {
   })
   tags = var.tags
 
+
+  depends_on = [aws_sqs_queue_redrive_allow_policy.sqs_ingestion_dlq]
+
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
     ignore_changes = [tags, tags_all]
