@@ -64,8 +64,8 @@ variable "sqs_max_receive_count" {
 
 variable "pipe_batch_size" {
   type        = number
-  description = "How many SQS messages the Pipe delivers to CreateManifest per invocation. Kept at 1 by default to keep CreateManifest's per-file logic simple."
-  default     = 1
+  description = "How many SQS messages the Pipe delivers to CreateManifest per invocation. CreateManifest loops over the whole batch, starting one Step Functions execution per message."
+  default     = 10
 }
 
 variable "log_retention_days" {
@@ -107,4 +107,31 @@ variable "ingestion_task_memory" {
   type        = number
   description = "Fargate memory (MB) for the ingestion task definition"
   default     = 1024
+}
+
+variable "aurora_secret_arn" {
+  type        = string
+  description = "Aurora master-user Secrets Manager ARN — the ingestion execution role fetches it to inject DB_USERNAME/DB_PASSWORD into every task def's container (same secrets-block idiom as thor-api/task-api). module.aurora is unconditional, so this is always a real value."
+}
+
+variable "db_host" {
+  type        = string
+  description = "What the ingestion container should connect to for Postgres — module.rds_proxy.endpoint, not Aurora's own endpoint, same as thor-api/task-api"
+}
+
+variable "db_name" {
+  type        = string
+  description = "Aurora database name — module.aurora.database_name"
+}
+
+variable "neptune_endpoint" {
+  type        = string
+  default     = ""
+  description = "Neptune cluster writer endpoint, injected into every task def's container as NEPTUNE_ENDPOINT. \"\" when enable_neptune is off — module.neptune is count-gated, may not exist."
+}
+
+variable "neptune_cluster_resource_id" {
+  type        = string
+  default     = ""
+  description = "Neptune's cluster_resource_id (not the cluster identifier) — needed to build the neptune-db:* IAM policy ARN in ecs_task.tf. \"\" means Neptune is off, in which case that IAM statement is skipped entirely rather than built against an invalid empty-resource-id ARN."
 }

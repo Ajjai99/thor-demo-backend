@@ -92,6 +92,26 @@ resource "aws_iam_role_policy_attachment" "ingestion_execution_policy_attachment
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# ECS's execution role (not the task role) must hold this for the secrets block below to work —
+# an AWS requirement. Unlike thor-api/task-api (modules/ecs/iam.tf), this task never calls
+# rds-data:ExecuteStatement, so there's no matching task-role grant needed.
+data "aws_iam_policy_document" "ingestion_execution_secrets" {
+  count = local.ingestion_active ? 1 : 0
+
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [var.aurora_secret_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "ingestion_execution_secrets" {
+  count = local.ingestion_active ? 1 : 0
+
+  name   = "ingestion-execution-secrets"
+  role   = aws_iam_role.ingestion_execution_role[0].id
+  policy = data.aws_iam_policy_document.ingestion_execution_secrets[0].json
+}
+
 resource "aws_iam_role" "ingestion_task_role" {
   count = local.ingestion_active ? 1 : 0
 
@@ -113,6 +133,33 @@ data "aws_iam_policy_document" "ingestion_task_permissions_document" {
   statement {
     actions   = ["s3:GetObject", "s3:ListBucket"]
     resources = [aws_s3_bucket.s3_ingestion[0].arn, "${aws_s3_bucket.s3_ingestion[0].arn}/*"]
+  }
+
+  # Broad read on every thor-<environment>-* secret (AD/CyberArk/Windows connector credentials) —
+  # the task picks which one it needs at runtime, so it can't be scoped to a fixed ARN. On the task
+  # role, not the execution role: this is the container's own SDK call, not a secrets-block injection.
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["arn:aws:secretsmanager:${var.aws_region}:${var.account_id}:secret:thor-${var.environment}-*"]
+  }
+
+  # Loader actions for graph-load-start/graph-load-poll; query actions for any stage querying the
+  # graph directly. Skipped when Neptune's off (neptune_cluster_resource_id == "") — an empty
+  # resource id isn't a valid neptune-db ARN.
+  dynamic "statement" {
+    for_each = var.neptune_cluster_resource_id != "" ? [1] : []
+
+    content {
+      actions = [
+        "neptune-db:StartLoaderJob",
+        "neptune-db:GetLoaderJobStatus",
+        "neptune-db:CancelLoaderJob",
+        "neptune-db:ReadDataViaQuery",
+        "neptune-db:WriteDataViaQuery",
+        "neptune-db:GetQueryStatus",
+      ]
+      resources = ["arn:aws:neptune-db:${var.aws_region}:${var.account_id}:${var.neptune_cluster_resource_id}/*"]
+    }
   }
 }
 
@@ -146,7 +193,20 @@ resource "aws_ecs_task_definition" "ecs_ingestion_task_definition" {
       essential = true
 
       environment = [
-        { name = "THOR_STEP", value = each.key }
+        { name = "THOR_STEP", value = each.key },
+        { name = "DB_HOST", value = var.db_host },
+        { name = "DB_NAME", value = var.db_name },
+        { name = "DB_PORT", value = "5432" },
+        { name = "NEPTUNE_ENDPOINT", value = var.neptune_endpoint },
+        { name = "NEPTUNE_PORT", value = "8182" },
+      ]
+
+      # DB_HOST/DB_NAME/DB_PORT above are plain config, not secrets. Credentials come from Secrets
+      # Manager via the execution role (ingestion_execution_secrets) — same JSON-key-suffix idiom
+      # infra/src/main.tf's services_with_shared_secrets local already uses for thor-api/task-api.
+      secrets = [
+        { name = "DB_USERNAME", valueFrom = "${var.aurora_secret_arn}:username::" },
+        { name = "DB_PASSWORD", valueFrom = "${var.aurora_secret_arn}:password::" },
       ]
 
       logConfiguration = {

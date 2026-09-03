@@ -17,8 +17,8 @@ locals {
 }
 
 resource "aws_db_subnet_group" "aurora_subnet_group" {
-  name_prefix      = "${local.name_prefix}-subnet-group"
-  subnet_ids = var.private_subnet_ids
+  name_prefix = "${local.name_prefix}-subnet-group"
+  subnet_ids  = var.private_subnet_ids
 
   tags = merge(var.tags, {
     Name = local.name_prefix
@@ -98,6 +98,8 @@ resource "aws_rds_cluster" "aurora_cluster" {
   skip_final_snapshot       = var.skip_final_snapshot
   final_snapshot_identifier = var.skip_final_snapshot ? null : "${local.name_prefix}-final"
 
+  # No underscore before "v2" here, unlike aws_neptune_cluster's serverless_v2_scaling_configuration
+  # (modules/neptune/main.tf) — a real provider-schema inconsistency, not a typo to "fix" either side.
   serverlessv2_scaling_configuration {
     min_capacity = var.min_capacity
     max_capacity = var.max_capacity
