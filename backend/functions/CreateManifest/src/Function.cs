@@ -28,26 +28,42 @@ public class Function
     // Stub only — logs what it received and reports success to Step Functions. Real
     // manifest-building logic (what actually gets recorded, from where) isn't implemented yet;
     // this exists to prove the CreateManifest -> Step Functions wiring works end to end.
+    //
+    // The Pipe delivers up to pipe_batch_size messages per invocation (see
+    // infra/src/modules/ingestion/variables.tf) — each is its own file/execution, so this starts
+    // one Step Functions execution per message rather than just handling messages[0]. A failure
+    // partway through still lets earlier messages' executions stand; the Pipe redelivers the
+    // whole batch on any unhandled exception, so an already-started execution runs again from
+    // CreateManifest's perspective (a second StartExecutionAsync), which is why every step
+    // downstream is documented as idempotent (see docs/architecture/ingestion_workflow.md on
+    // thor-50).
     public async Task<object> FunctionHandler(List<SqsMessage> messages, ILambdaContext context)
     {
         context.Logger.LogInformation($"Received {messages.Count} message(s)");
 
-        var (bucket, key) = ParseS3Event(messages[0].Body);
+        var executionArns = new List<string>();
 
-        var input = JsonSerializer.Serialize(new
+        foreach (var message in messages)
         {
-            status = "success",
-            bucket,
-            key,
-            retry_count = 0,
-        });
+            var (bucket, key) = ParseS3Event(message.Body);
 
-        var result = await StepFunctionsClient.StartExecutionAsync(new StartExecutionRequest
-        {
-            StateMachineArn = Environment.GetEnvironmentVariable("STATE_MACHINE_ARN"),
-            Input = input,
-        });
+            var input = JsonSerializer.Serialize(new
+            {
+                status = "success",
+                bucket,
+                key,
+                retry_count = 0,
+            });
 
-        return new { status = "stub", executionArn = result.ExecutionArn };
+            var result = await StepFunctionsClient.StartExecutionAsync(new StartExecutionRequest
+            {
+                StateMachineArn = Environment.GetEnvironmentVariable("STATE_MACHINE_ARN"),
+                Input = input,
+            });
+
+            executionArns.Add(result.ExecutionArn);
+        }
+
+        return new { status = "stub", executionArns };
     }
 }

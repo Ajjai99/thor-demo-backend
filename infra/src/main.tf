@@ -254,10 +254,15 @@ module "rds_proxy" {
   aurora_cluster_identifier = module.aurora.cluster_identifier
   aurora_secret_arn         = module.aurora.master_user_secret_arn
 
-  allowed_security_group_ids = var.enable_compute ? {
-    thor-api = module.ecs.service_security_group_ids["thor-api"]
-    task-api = module.ecs.service_security_group_ids["task-api"]
-  } : {}
+  allowed_security_group_ids = merge(
+    var.enable_compute ? {
+      thor-api = module.ecs.service_security_group_ids["thor-api"]
+      task-api = module.ecs.service_security_group_ids["task-api"]
+    } : {},
+    var.enable_ingestion ? {
+      ingestion = module.ingestion.task_security_group_id
+    } : {}
+  )
 
   tags = var.tags
 }
@@ -278,7 +283,44 @@ module "ingestion" {
   iam_permissions_boundary_arn = local.iam_permissions_boundary_arn
   create_manifest_source_dir   = var.create_manifest_source_dir
 
+  aurora_secret_arn = module.aurora.master_user_secret_arn
+  db_host           = module.rds_proxy.endpoint
+  db_name           = module.aurora.database_name
+
+  neptune_endpoint            = var.enable_neptune ? module.neptune[0].endpoint : ""
+  neptune_cluster_resource_id = var.enable_neptune ? module.neptune[0].cluster_resource_id : ""
+
   tags = var.tags
 }
 
-# Neptune: future work.
+# Graph DB for intelligence-engine/task-api's edge/relationship queries.
+module "neptune" {
+  count = var.enable_neptune ? 1 : 0
+
+  source = "./modules/neptune"
+
+  environment        = var.environment
+  vpc_id             = local.vpc_id
+  vpc_cidr           = local.vpc_cidr_effective
+  private_subnet_ids = local.private_subnet_ids
+  create_ingress     = var.enable_compute || var.enable_ingestion
+
+  consumer_security_group_ids = merge(
+    var.enable_compute ? {
+      intelligence-engine = module.ecs.service_security_group_ids["intelligence-engine"]
+      task-api            = module.ecs.service_security_group_ids["task-api"]
+    } : {},
+    var.enable_ingestion ? {
+      ingestion = module.ingestion.task_security_group_id
+    } : {}
+  )
+
+  engine_version        = var.neptune_engine_version
+  min_capacity          = var.neptune_min_capacity
+  max_capacity          = var.neptune_max_capacity
+  backup_retention_days = var.neptune_backup_retention_days
+  deletion_protection   = var.neptune_deletion_protection
+  skip_final_snapshot   = var.neptune_skip_final_snapshot
+
+  tags = var.tags
+}

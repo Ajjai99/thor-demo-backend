@@ -31,3 +31,8 @@ output "ingestion_task_definition_arns" {
   description = "Map of THOR_STEP -> its ECS task definition ARN"
   value       = var.enable_ingestion ? { for k, v in aws_ecs_task_definition.ecs_ingestion_task_definition : k => v.arn } : null
 }
+
+output "task_security_group_id" {
+  description = "Passed into module.rds_proxy's and module.neptune's own consumer/allowed security-group maps at the root, so the ingestion task can actually reach both"
+  value       = var.enable_ingestion ? aws_security_group.ingestion_task_sg[0].id : null
+}

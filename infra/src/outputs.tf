@@ -107,3 +107,24 @@ output "ingestion_queue_url" {
 output "ingestion_state_machine_arn" {
   value = var.enable_ingestion ? module.ingestion.state_machine_arn : null
 }
+
+output "neptune_endpoint" {
+  value = var.enable_neptune ? module.neptune[0].endpoint : null
+}
+
+output "neptune_reader_endpoint" {
+  value = var.enable_neptune ? module.neptune[0].reader_endpoint : null
+}
+
+output "neptune_port" {
+  value = var.enable_neptune ? module.neptune[0].port : null
+}
+
+output "neptune_cluster_resource_id" {
+  description = "Needed for the neptune-db IAM policy ARN once the Gremlin client is wired up"
+  value       = var.enable_neptune ? module.neptune[0].cluster_resource_id : null
+}
+
+output "neptune_security_group_id" {
+  value = var.enable_neptune ? module.neptune[0].security_group_id : null
+}

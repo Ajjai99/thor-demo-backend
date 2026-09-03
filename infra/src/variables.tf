@@ -240,4 +240,48 @@ variable "aurora_skip_final_snapshot" {
   description = "Should be false for prod, true for throwaway dev/qa environments"
 }
 
+# --- neptune graph db (module.neptune) ---
+
+variable "enable_neptune" {
+  type        = bool
+  description = "Whether to create the Neptune graph DB (module.neptune) — subnet group, security group + per-consumer ingress rules, and the serverless cluster/instance"
+  default     = false
+}
+
+variable "neptune_engine_version" {
+  type        = string
+  default     = "1.4.8.0"
+  description = "Neptune engine version — passed through to module.neptune"
+}
+
+variable "neptune_min_capacity" {
+  type        = number
+  default     = 1
+  description = "Neptune Serverless v2 minimum NCU"
+}
+
+variable "neptune_max_capacity" {
+  type        = number
+  default     = 2
+  description = "Neptune Serverless v2 maximum NCU"
+}
+
+variable "neptune_backup_retention_days" {
+  type        = number
+  default     = 7
+  description = "Neptune automated backup retention period"
+}
+
+variable "neptune_deletion_protection" {
+  type        = bool
+  default     = false
+  description = "Should be true for prod, false for throwaway dev/qa environments"
+}
+
+variable "neptune_skip_final_snapshot" {
+  type        = bool
+  default     = true
+  description = "Should be false for prod, true for throwaway dev/qa environments"
+}
+
 # Future modules' variables go here.

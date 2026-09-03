@@ -147,5 +147,14 @@ inputs = {
   enable_ingestion           = true
   create_manifest_source_dir = "${get_repo_root()}/backend/functions/CreateManifest/publish"
 
+  # --- neptune graph db ---
+  enable_neptune                = true
+  neptune_engine_version        = "1.4.8.0"
+  neptune_min_capacity          = 1
+  neptune_max_capacity          = 8
+  neptune_backup_retention_days = 7
+  neptune_deletion_protection   = false
+  neptune_skip_final_snapshot   = true
+
   tags = {}
 }
