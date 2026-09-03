@@ -50,7 +50,7 @@ resource "aws_iam_role_policy" "pipe_policy" {
 resource "aws_pipes_pipe" "pipe_ingestion_pipes" {
   count = local.ingestion_active ? 1 : 0
 
-  name     = local.name_prefix
+  name     = "${local.name_prefix}-pipe"
   role_arn = aws_iam_role.pipe_role[0].arn
   source   = aws_sqs_queue.sqs_ingestion[0].arn
   target   = aws_lambda_function.manifest_lambda_function[0].arn

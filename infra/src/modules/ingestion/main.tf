@@ -87,7 +87,7 @@ resource "aws_sqs_queue_redrive_allow_policy" "sqs_ingestion_dlq" {
 resource "aws_sqs_queue" "sqs_ingestion" {
   count = local.ingestion_active ? 1 : 0
 
-  name                       = local.name_prefix
+  name                       = "${local.name_prefix}-sqs"
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.sqs_ingestion_dlq[0].arn
