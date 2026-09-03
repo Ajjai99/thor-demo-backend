@@ -92,7 +92,7 @@ data "aws_iam_policy_document" "state_machine_permissions" {
 resource "aws_iam_role_policy" "state_machine_policy" {
   count = local.ingestion_active ? 1 : 0
 
-  name   = "state-machine-permissions"
+  name   = "${local.name_prefix}-state-machine-permissions"
   role   = aws_iam_role.state_machine_role[0].id
   policy = data.aws_iam_policy_document.state_machine_permissions[0].json
 }

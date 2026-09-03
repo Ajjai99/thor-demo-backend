@@ -52,7 +52,7 @@ data "aws_iam_policy_document" "manifest_lambda_role_permissions_document" {
 resource "aws_iam_role_policy" "manifest_lambda_role_policy" {
   count = local.ingestion_active ? 1 : 0
 
-  name   = "create-manifest-permissions"
+  name   = "${local.name_prefix}-manifest-permissions"
   role   = aws_iam_role.manifest_lambda_role[0].id
   policy = data.aws_iam_policy_document.manifest_lambda_role_permissions_document[0].json
 }

@@ -134,3 +134,24 @@ resource "aws_neptune_cluster_instance" "neptune" {
     ignore_changes = [tags, tags_all]
   }
 }
+
+# Second instance for Multi-AZ failover — kept as its own resource, not for_each, so it's purely
+# additive (same pattern as modules/aurora's aurora_instance_2). Storage itself already replicates
+# across 3 AZs regardless of instance count; this is what gives fast compute-level failover instead
+# of needing a brand-new instance provisioned after the primary goes down.
+resource "aws_neptune_cluster_instance" "neptune_2" {
+  identifier         = "${local.name_prefix}-instance-2"
+  cluster_identifier = aws_neptune_cluster.neptune.id
+  instance_class     = "db.serverless"
+  engine             = aws_neptune_cluster.neptune.engine
+  engine_version     = aws_neptune_cluster.neptune.engine_version
+
+  tags = merge(var.tags, {
+    Name = "${local.name_prefix}-instance-2"
+  })
+
+  # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
+}
