@@ -1,7 +1,7 @@
 locals {
   name_prefix      = "thor-${var.environment}-ingestion"
   ingestion_active = var.enable_ingestion
-  bucket_name      = "thor-${var.environment}-ingestion-${var.account_id}"
+  bucket_name      = "${local.name_prefix}-${var.account_id}"
 
   # One THOR_STEP per Thor.Workflows.Ingestion container entry point, in pipeline order —
   # see ecs_task.tf/state_machine.tf.
@@ -31,7 +31,7 @@ locals {
         Overrides = {
           ContainerOverrides = [
             {
-              Name = "ingestion"
+              Name = "${local.name_prefix}-container"
               Environment = [
                 { "Name" : "THOR_INPUT", "Value.$" : "States.JsonToString($)" }
               ]

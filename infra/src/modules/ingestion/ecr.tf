@@ -1,7 +1,8 @@
-# Unconditional — a repo must exist before enable_ingestion can turn on. Named "ingestion-<environment>",
-# matching modules/ecs/ecr.tf's own naming exception.
+# Unconditional — a repo must exist before enable_ingestion can turn on. Deliberately uses
+# name_prefix like every other resource in this module, unlike modules/ecs/ecr.tf's own
+# "<service>-<environment>" exception.
 resource "aws_ecr_repository" "ecr_ingestion" {
-  name                 = "ingestion-${var.environment}"
+  name                 = "${local.name_prefix}-ecr"
   image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {

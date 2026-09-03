@@ -50,7 +50,7 @@ resource "aws_security_group" "ingestion_task_sg" {
 resource "aws_cloudwatch_log_group" "ingestion_task_log_group" {
   count = local.ingestion_active ? 1 : 0
 
-  name              = "/ecs/${var.environment}/ingestion"
+  name              = "/ecs/${var.environment}/${local.name_prefix}"
   retention_in_days = var.log_retention_days
   tags              = var.tags
 
@@ -107,7 +107,7 @@ data "aws_iam_policy_document" "ingestion_execution_secrets" {
 resource "aws_iam_role_policy" "ingestion_execution_secrets" {
   count = local.ingestion_active ? 1 : 0
 
-  name   = "ingestion-execution-secrets"
+  name   = "${local.name_prefix}-execution-secrets"
   role   = aws_iam_role.ingestion_execution_role[0].id
   policy = data.aws_iam_policy_document.ingestion_execution_secrets[0].json
 }
@@ -166,7 +166,7 @@ data "aws_iam_policy_document" "ingestion_task_permissions_document" {
 resource "aws_iam_role_policy" "ingestion_task_permissions" {
   count = local.ingestion_active ? 1 : 0
 
-  name   = "ingestion-task-permissions"
+  name   = "${local.name_prefix}-task-permissions"
   role   = aws_iam_role.ingestion_task_role[0].id
   policy = data.aws_iam_policy_document.ingestion_task_permissions_document[0].json
 }
@@ -188,7 +188,7 @@ resource "aws_ecs_task_definition" "ecs_ingestion_task_definition" {
 
   container_definitions = jsonencode([
     {
-      name      = "ingestion"
+      name      = "${local.name_prefix}-container"
       image     = local.resolved_ingestion_image
       essential = true
 
