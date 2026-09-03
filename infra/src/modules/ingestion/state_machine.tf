@@ -104,7 +104,7 @@ resource "aws_iam_role_policy" "state_machine_policy" {
 resource "aws_sfn_state_machine" "sfn_ingestion" {
   count = local.ingestion_active ? 1 : 0
 
-  name     = local.name_prefix
+  name     = "${local.name_prefix}-sf"
   role_arn = aws_iam_role.state_machine_role[0].arn
 
   definition = jsonencode({
