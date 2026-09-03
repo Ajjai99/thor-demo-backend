@@ -222,6 +222,12 @@ resource "aws_ecs_task_definition" "ecs_ingestion_task_definition" {
 
   tags = var.tags
 
+  depends_on = [
+    aws_iam_role_policy_attachment.ingestion_execution_policy_attachment,
+    aws_iam_role_policy.ingestion_execution_secrets,
+    aws_iam_role_policy.ingestion_task_permissions,
+  ]
+
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
     ignore_changes = [tags, tags_all]
