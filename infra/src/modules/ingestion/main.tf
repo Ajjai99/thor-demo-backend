@@ -75,9 +75,10 @@ resource "aws_sqs_queue_redrive_allow_policy" "sqs_ingestion_dlq" {
   count = local.ingestion_active ? 1 : 0
 
   queue_url = aws_sqs_queue.sqs_ingestion_dlq[0].id
+
   redrive_allow_policy = jsonencode({
     redrivePermission = "byQueue"
-    sourceQueueArns   = [aws_sqs_queue.sqs_ingestion[0].arn]
+    sourceQueueArns   = ["arn:aws:sqs:${var.aws_region}:${var.account_id}:${local.name_prefix}-sqs"]
   })
 }
 
