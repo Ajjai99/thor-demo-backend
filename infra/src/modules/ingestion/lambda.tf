@@ -94,6 +94,7 @@ resource "aws_lambda_function" "manifest_lambda_function" {
   depends_on = [
     aws_cloudwatch_log_group.manifest_lambda_log_group,
     aws_iam_role_policy_attachment.manifest_lambda_policy_attachment,
+    aws_iam_role_policy.manifest_lambda_role_policy,
   ]
 
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
