@@ -67,6 +67,8 @@ resource "aws_pipes_pipe" "pipe_ingestion_pipes" {
     }
   }
 
+  depends_on = [aws_iam_role_policy.pipe_policy]
+
   tags = var.tags
 
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.

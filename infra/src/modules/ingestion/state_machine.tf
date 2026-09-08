@@ -140,6 +140,8 @@ resource "aws_sfn_state_machine" "sfn_ingestion" {
 
   tags = var.tags
 
+  depends_on = [aws_iam_role_policy.state_machine_policy]
+
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
     ignore_changes = [tags, tags_all]
