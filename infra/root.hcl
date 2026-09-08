@@ -3,16 +3,16 @@ locals {
 
   account_map = {
     dev = {
-      account_id = "877969058937" # Account A, shared with qa — provide aws-account-id
-      aws_region = "us-east-1"
+      account_id = get_aws_account_id() # Account A, shared with qa — provide aws-account-id
+      aws_region = get_env("DEV_AWS_REGION")
     }
     qa = {
-      account_id = "877969058937" # Account A, shared with dev — provide aws-account-id
-      aws_region = "us-east-1"
+      account_id = get_aws_account_id() # Account A, shared with dev — provide aws-account-id
+      aws_region = get_env("QA_AWS_REGION")
     }
     prod = {
-      account_id = "ACCOUNT-ID" # Account B, isolated from dev/qa — provide aws-account-id
-      aws_region = "us-east-1"
+      account_id = get_aws_account_id() # Account B, isolated from dev/qa — provide aws-account-id
+      aws_region = get_env("PROD_AWS_REGION")
     }
   }
 
