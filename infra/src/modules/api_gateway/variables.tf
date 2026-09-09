@@ -40,22 +40,63 @@ variable "authorizer_lambda_function_name" {
   description = "Lambda authorizer's function name — grants API Gateway invoke permission"
 }
 
+variable "aws_region" {
+  type        = string
+  description = "Region this API lives in — builds the execute-api origin hostname for cdn.tf without a live data source lookup. Note this is the *origin's* region; the distribution itself is global and its certificate must be us-east-1 regardless."
+}
+
 variable "domain_name" {
   type        = string
-  description = "Custom hostname to map this API to, e.g. api.dev.cndemo.com. \"\" (default) leaves the API reachable only via its default execute-api URL — no custom domain, mapping, or alias records get created."
+  description = "Public hostname for this API, e.g. api.dev.hartech.online — served by the CloudFront distribution in cdn.tf, which is what owns the name. \"\" (default) leaves the distribution on its own *.cloudfront.net domain: no alias record and no custom certificate."
   default     = ""
 }
 
 variable "acm_certificate_arn" {
   type        = string
-  description = "ACM certificate covering domain_name — must be REGIONAL (same region as this API), not the us-east-1-only certs CloudFront requires, unless this API also happens to run in us-east-1. Required when domain_name is set, unused otherwise."
+  description = "ACM certificate covering domain_name — must be in us-east-1, which CloudFront requires of every distribution regardless of which region this API runs in. Required when domain_name is set, unused otherwise."
   default     = ""
 }
 
 variable "zone_id" {
   type        = string
-  description = "Hosted zone domain_name's alias records get created in. Required when domain_name is set, unused otherwise."
+  description = "Hosted zone domain_name's alias record gets created in. Required when domain_name is set, unused otherwise."
   default     = ""
+}
+
+variable "cdn_price_class" {
+  type        = string
+  description = "CloudFront price class for this API's distribution — controls which edge locations serve it"
+  default     = "PriceClass_100"
+}
+
+variable "cdn_waf_rate_limit" {
+  type        = number
+  description = "WAF rate-limit threshold for this API's distribution: requests from a single IP in a rolling 5-minute window before it's blocked. Tuned separately from the frontend's, since API call rates per client look nothing like browser traffic."
+  default     = 2000
+}
+
+variable "cors_allow_origins" {
+  type        = list(string)
+  description = "Origins allowed to call this API from a browser, as full origins including scheme (e.g. [\"https://dev.hartech.online\"]) — the frontend's own hostname, which is cross-origin to the API's. [] (default) omits cors_configuration entirely, leaving preflight unanswered, which is fine for a server-to-server-only API."
+  default     = []
+}
+
+variable "cors_allow_methods" {
+  type        = list(string)
+  description = "Methods advertised in preflight responses. Should cover whatever the routes actually expose (integration.tf's GET/POST today) plus OPTIONS. Unused when cors_allow_origins is empty."
+  default     = ["GET", "POST", "OPTIONS"]
+}
+
+variable "cors_allow_headers" {
+  type        = list(string)
+  description = "Headers a browser is allowed to send. x-api-key matters specifically — it's the authorizer's identity source (authorizer.tf), so omitting it here would let preflight pass and then fail the real request. Unused when cors_allow_origins is empty."
+  default     = ["content-type", "x-api-key", "authorization"]
+}
+
+variable "cors_max_age" {
+  type        = number
+  description = "How long (seconds) a browser may cache this API's preflight response. Unused when cors_allow_origins is empty."
+  default     = 300
 }
 
 variable "tls_server_name" {

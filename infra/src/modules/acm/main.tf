@@ -3,9 +3,15 @@
 resource "aws_acm_certificate" "this" {
   for_each = var.certificates
 
-  domain_name               = each.value.domain_name
-  subject_alternative_names = each.value.subject_alternative_names
-  validation_method         = "DNS"
+  domain_name = each.value.domain_name
+  # The wildcard is opt-in per certificate, not automatic: a certificate for one exact hostname
+  # (api.dev.example.com) has no use for *.api.dev.example.com, and asking for it would only add
+  # a second validation record to satisfy for nothing.
+  subject_alternative_names = concat(
+    each.value.include_wildcard ? ["*.${each.value.domain_name}"] : [],
+    each.value.subject_alternative_names,
+  )
+  validation_method = "DNS"
 
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.
   lifecycle {
@@ -19,18 +25,41 @@ resource "aws_acm_certificate" "this" {
 }
 
 locals {
-  # Flatten (certificate -> its domain_validation_options) into a single map,
-  # one entry per hostname needing a CNAME. Keyed by "<cert_key>/<hostname>"
-  # so aws_route53_record.validation's for_each never collides, even when
-  # two different certificates share a hostname across their SANs.
+  # Zone names ordered most-specific-first, so a delegated child zone always beats its parent
+  # when both could match: a record under dev.example.com belongs in the dev.example.com zone,
+  # not in example.com, where the child's NS delegation would shadow it and it'd never resolve.
+  # Label count is zero-padded into the sort key because sort() is lexical, not by length.
+  zones_by_specificity = [
+    for entry in reverse(sort([
+      for zone_name in keys(var.zones) :
+      format("%03d|%s", length(split(".", zone_name)), zone_name)
+    ])) : split("|", entry)[1]
+  ]
+
+  # Flatten (certificate -> its domain_validation_options) into a single map, one entry per
+  # hostname needing a CNAME. Keyed by "<cert_key>/<hostname>" so aws_route53_record.validation's
+  # for_each never collides, even when two different certificates share a hostname across their
+  # SANs. Keyed on domain_name specifically, not the record name: for_each keys have to be known
+  # at plan time, and resource_record_name isn't until the certificate actually exists.
+  #
+  # A domain and its own wildcard (example.com / *.example.com) share one validation record, so
+  # two entries here can write the identical CNAME — harmless, and what allow_overwrite is for.
   validation_records = merge([
     for cert_key, cert in aws_acm_certificate.this : {
       for dvo in cert.domain_validation_options : "${cert_key}/${dvo.domain_name}" => {
         cert_key = cert_key
-        zone_id  = var.certificates[cert_key].zone_id
-        name     = dvo.resource_record_name
-        type     = dvo.resource_record_type
-        record   = dvo.resource_record_value
+        # The zone that actually serves this record, rather than one zone per certificate — a
+        # cert may span an apex and a delegated child (example.com + *.dev.example.com), whose
+        # records must land in different zones. Wildcards are stripped first: "*.dev.example.com"
+        # is proven via "_hash.dev.example.com", so it belongs wherever dev.example.com does.
+        zone_id = var.zones[[
+          for zone_name in local.zones_by_specificity : zone_name
+          if trimprefix(dvo.domain_name, "*.") == zone_name
+          || endswith(trimprefix(dvo.domain_name, "*."), ".${zone_name}")
+        ][0]]
+        name   = dvo.resource_record_name
+        type   = dvo.resource_record_type
+        record = dvo.resource_record_value
       }
     }
   ]...)

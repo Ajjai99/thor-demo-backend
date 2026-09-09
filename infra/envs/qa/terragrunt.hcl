@@ -6,6 +6,10 @@ terraform {
   source = "../../src"
 }
 
+locals {
+  apex_domain = "cndemo.com" # QA
+}
+
 # Every value the root module accepts is spelled out below, same as envs/dev — only `environment` is left out, root.hcl supplies it.
 inputs = {
   # --- network ---
@@ -98,7 +102,7 @@ inputs = {
         frontend = {
           domain_name = "qa.cndemo.com"
         }
-        api_gateway = {
+        api = {
           domain_name = "api.qa.cndemo.com"
         }
         # NLB's TLS listener cert (re-encryption) — CN/SNI only, no DNS record needed.
@@ -114,8 +118,8 @@ inputs = {
   frontend_price_class     = "PriceClass_100"
   frontend_certificate_key = "thor/frontend"
 
-  # --- api gateway custom domain ---
-  api_gateway_certificate_key = "thor/api_gateway"
+  # --- api cdn (CloudFront in front of the HTTP API) ---
+  api_cdn_certificate_key = "thor/api"
 
   # --- nlb <-> ecs TLS re-encryption ---
   backend_certificate_key = "thor/backend"

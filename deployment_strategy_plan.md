@@ -1,6 +1,8 @@
 1. Purpose
 
 This document provides a detailed technical blueprint for implementing the DevOps architecture of the Thor platform solution. It includes exact tool configurations, automation logic, infrastructure definitions, pipeline scripts, and environment-specific deployment procedures. The objective is to enable engineers to consistently and securely deliver, monitor, and manage application services using codified, version-controlled, and auditable practices. 
+
+
 2. Scope
 
 This document outlines the detailed technical implementation of the DevOps architecture for Thor platform, covering: 
@@ -24,7 +26,9 @@ This document outlines the detailed technical implementation of the DevOps archi
 3. Architecture Diagram
 Thor - Architecture - RDS Proxy.png
 Application Architecture
+
 4. Key Components
+
 4.1 Source Code Management
 
      Repository Tool: GitHub.

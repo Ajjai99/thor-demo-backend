@@ -7,7 +7,7 @@ terraform {
 }
 
 locals {
-  apex_domain = "cndemo.com" # Dev
+  apex_domain = "hartech.online" # Dev
 }
 
 # Every value the root module accepts is spelled out below instead of relying on a default in infra/src/variables.tf; only `environment` is left out, since infra/root.hcl already supplies it for every environment.
@@ -20,7 +20,10 @@ inputs = {
   enable_vpc_endpoints = true
 
   # --- ecs compute ---
-  # false until a real image has been pushed to each ECR repo below — the cluster/namespace/repos are created regardless.
+  # false until a real image has been pushed to each E
+
+
+  # CR repo below — the cluster/namespace/repos are created regardless.
   enable_compute            = true
   enable_container_insights = true
 
@@ -87,28 +90,33 @@ inputs = {
   enable_route53 = true
 
   hosted_zones = {
-    # Apex zone — no certificates of its own, exists only so the "dev" NS
-    # delegation record (created automatically by modules/route53 via
-    # thor's parent_zone_name below, same as SPHERE IT would for real) has
-    # somewhere to live.
+    # Apex zone serves nothing itself — it exists so the "dev" NS delegation record (created
+    # automatically by modules/route53 via thor's parent_zone_name below, same as SPHERE IT would
+    # for real) has somewhere to live. No certificate, since no hostname at this level is served.
     apex = {
       zone_name    = local.apex_domain
       certificates = {}
     }
 
     thor = {
-      zone_name        = "dev.cndemo.com"
+      zone_name        = "dev.hartech.online"
       parent_zone_name = local.apex_domain
+      # One certificate per hostname, each covering exactly the name its own service serves. No
+      # wildcards: every hostname here is known up front, so a wildcard would only widen the blast
+      # radius of a single certificate. modules/acm routes each validation record to whichever zone
+      # actually serves it, so certs for names in this delegated child zone validate on their own.
       certificates = {
+        # CloudFront (S3 origin) — must be us-east-1, as every CloudFront cert must.
         frontend = {
-          domain_name = "dev.cndemo.com"
+          domain_name = "dev.hartech.online"
         }
-        api_gateway = {
-          domain_name = "api.dev.cndemo.com"
+        # CloudFront (API Gateway origin) — likewise us-east-1.
+        api = {
+          domain_name = "api.dev.hartech.online"
         }
         # NLB's TLS listener cert (re-encryption) — CN/SNI only, no DNS record needed.
         backend = {
-          domain_name = "backend.dev.cndemo.com"
+          domain_name = "backend.dev.hartech.online"
         }
       }
     }
@@ -119,8 +127,10 @@ inputs = {
   frontend_price_class     = "PriceClass_100"
   frontend_certificate_key = "thor/frontend"
 
-  # --- api gateway custom domain ---
-  api_gateway_certificate_key = "thor/api_gateway"
+  # --- api cdn (CloudFront in front of the HTTP API) ---
+  api_cdn_certificate_key = "thor/api"
+  api_cdn_price_class     = "PriceClass_100"
+  api_cdn_waf_rate_limit  = 2000
 
   # --- nlb <-> ecs TLS re-encryption ---
   backend_certificate_key = "thor/backend"

@@ -98,7 +98,7 @@ inputs = {
         frontend = {
           domain_name = "prod.cndemo.com"
         }
-        api_gateway = {
+        api = {
           domain_name = "api.prod.cndemo.com"
         }
         # NLB's TLS listener cert (re-encryption) — CN/SNI only, no DNS record needed.
@@ -114,8 +114,8 @@ inputs = {
   frontend_price_class     = "PriceClass_100"
   frontend_certificate_key = "thor/frontend"
 
-  # --- api gateway custom domain ---
-  api_gateway_certificate_key = "thor/api_gateway"
+  # --- api cdn (CloudFront in front of the HTTP API) ---
+  api_cdn_certificate_key = "thor/api"
 
   # --- nlb <-> ecs TLS re-encryption ---
   backend_certificate_key = "thor/backend"

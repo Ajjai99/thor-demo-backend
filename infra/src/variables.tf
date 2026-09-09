@@ -122,6 +122,9 @@ variable "hosted_zones" {
     certificates = map(object({
       domain_name               = string
       subject_alternative_names = optional(list(string), [])
+      # Adds "*.<domain_name>" alongside domain_name. Off by default: a certificate naming one
+      # exact host has no use for its wildcard, and requesting it only adds a validation record.
+      include_wildcard = optional(bool, false)
     }))
   }))
   default = {}
@@ -147,16 +150,30 @@ variable "frontend_certificate_key" {
   default     = ""
 }
 
-variable "api_gateway_certificate_key" {
-  type        = string
-  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/api_gateway\") the API's custom domain + cert come from. \"\" (default) leaves the API reachable only via its default execute-api URL, no custom domain mapping created."
-  default     = ""
-}
-
 variable "backend_certificate_key" {
   type        = string
   description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/backend\") the NLB's TLS listener cert comes from, for NLB <-> ECS re-encryption. \"\" (default) leaves the NLB on plain TCP and the app on plain HTTP:8080, today's behavior — set only where the re-encryption path is actually wanted (dev only for now)."
   default     = ""
+}
+
+# --- api cdn (CloudFront in front of the HTTP API) ---
+
+variable "api_cdn_certificate_key" {
+  type        = string
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/api\") the API's public hostname + cert come from. That certificate must be in us-east-1, which CloudFront requires of every distribution regardless of this stack's own region. \"\" (default) leaves the distribution on its *.cloudfront.net name, no alias record created."
+  default     = ""
+}
+
+variable "api_cdn_price_class" {
+  type        = string
+  description = "CloudFront price class for the API distribution"
+  default     = "PriceClass_100"
+}
+
+variable "api_cdn_waf_rate_limit" {
+  type        = number
+  description = "WAF rate-limit threshold for the API distribution: requests from one IP per rolling 5-minute window before blocking. Separate from the frontend's, since API traffic per client looks nothing like a browser loading a static bundle."
+  default     = 2000
 }
 
 # --- api gateway authorizer (Lambda, validates connector API keys against Aurora) ---

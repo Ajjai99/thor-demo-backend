@@ -50,6 +50,21 @@ resource "aws_apigatewayv2_api" "thor-apigw-api" {
   name          = "${var.service_name}-${var.environment}-api"
   protocol_type = "HTTP"
 
+  # The frontend and the API sit on different hostnames (dev.<domain> vs api.dev.<domain>), which
+  # browsers treat as cross-origin however closely related the names look — so preflight has to be
+  # answered or every browser call fails before it reaches a route. Handled at the API level rather
+  # than by an OPTIONS route on purpose: API Gateway answers preflight itself, without running the
+  # authorizer, which an OPTIONS route would (and preflight requests carry no x-api-key to check).
+  dynamic "cors_configuration" {
+    for_each = length(var.cors_allow_origins) > 0 ? [1] : []
+    content {
+      allow_origins = var.cors_allow_origins
+      allow_methods = var.cors_allow_methods
+      allow_headers = var.cors_allow_headers
+      max_age       = var.cors_max_age
+    }
+  }
+
   tags = var.tags
 
   # Cloud Custodian auto-tags this after creation and an SCP blocks removing it — ignore tags to avoid fighting it.

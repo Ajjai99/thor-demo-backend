@@ -112,10 +112,17 @@ module "acm" {
   source = "./modules/acm"
 
   certificates = {
-    for key, cert in local.route53_certificates_flat : key => merge(cert, {
-      zone_id = module.route53[0].zone_ids[cert.zone_name]
-    })
+    for key, cert in local.route53_certificates_flat : key => {
+      domain_name               = cert.domain_name
+      subject_alternative_names = cert.subject_alternative_names
+      include_wildcard          = cert.include_wildcard
+    }
   }
+
+  # Every zone, not just the one each certificate was declared under — the module routes each
+  # validation CNAME to whichever zone actually serves it, so a certificate for a name in a
+  # delegated child zone (api.dev.hartech.online) validates without help.
+  zones = module.route53[0].zone_ids
 
   tags = var.tags
 }
@@ -130,11 +137,12 @@ locals {
     zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.frontend_certificate_key].zone_name]
   } : null
 
-  # Same pattern as frontend_route53 above, for api_gateway's custom domain mapping.
-  api_gateway_route53 = var.enable_route53 && var.api_gateway_certificate_key != "" ? {
-    domain_name     = local.route53_certificates_flat[var.api_gateway_certificate_key].domain_name
-    certificate_arn = module.acm[0].certificate_arns[var.api_gateway_certificate_key]
-    zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.api_gateway_certificate_key].zone_name]
+  # Same pattern as frontend_route53 above, for the CloudFront distribution fronting the API.
+  # Its certificate has to be us-east-1 like any CloudFront cert — see api_cdn_certificate_key.
+  api_cdn_route53 = var.enable_route53 && var.api_cdn_certificate_key != "" ? {
+    domain_name     = local.route53_certificates_flat[var.api_cdn_certificate_key].domain_name
+    certificate_arn = module.acm[0].certificate_arns[var.api_cdn_certificate_key]
+    zone_id         = module.route53[0].zone_ids[local.route53_certificates_flat[var.api_cdn_certificate_key].zone_name]
   } : null
 
   # Same pattern again, for the NLB's TLS listener (NLB <-> ECS re-encryption) and API Gateway's
@@ -162,6 +170,8 @@ module "frontend" {
   tags = var.tags
 }
 
+# The API and its public front door (CloudFront + WAF, see the module's cdn.tf) — one module, since
+# the distribution's origin is this same API's execute-api endpoint and nothing else can use it.
 # Needs the NLB listener, so gated with ecs's enable_compute.
 module "api_gateway" {
   count = var.enable_compute ? 1 : 0
@@ -170,6 +180,7 @@ module "api_gateway" {
 
   environment        = var.environment
   service_name       = local.public_service_name
+  aws_region         = var.aws_region
   nlb_listener_arn   = module.ecs.nlb_listener_arns[local.public_service_name]
   vpc_id             = local.vpc_id
   private_subnet_ids = local.private_subnet_ids
@@ -177,15 +188,37 @@ module "api_gateway" {
   authorizer_lambda_invoke_arn    = module.lambda.lambda_invoke_arn
   authorizer_lambda_function_name = module.lambda.lambda_function_name
 
-  domain_name         = local.api_gateway_route53 != null ? local.api_gateway_route53.domain_name : ""
-  acm_certificate_arn = local.api_gateway_route53 != null ? local.api_gateway_route53.certificate_arn : ""
-  zone_id             = local.api_gateway_route53 != null ? local.api_gateway_route53.zone_id : ""
+  # The public hostname belongs to the CloudFront distribution, so its certificate has to be
+  # us-east-1 like any CloudFront cert — see api_cdn_certificate_key.
+  domain_name         = local.api_cdn_route53 != null ? local.api_cdn_route53.domain_name : ""
+  acm_certificate_arn = local.api_cdn_route53 != null ? local.api_cdn_route53.certificate_arn : ""
+  zone_id             = local.api_cdn_route53 != null ? local.api_cdn_route53.zone_id : ""
+  cdn_price_class     = var.api_cdn_price_class
+  cdn_waf_rate_limit  = var.api_cdn_waf_rate_limit
+
+  # The frontend's origin is cross-origin to this API (dev.<domain> vs api.dev.<domain>), so
+  # preflight has to be answered — [] whenever the frontend has no custom domain to allow.
+  cors_allow_origins = local.frontend_route53 != null ? ["https://${local.frontend_route53.domain_name}"] : []
 
   # Must agree with the NLB's own TLS state (modules/ecs/nlb.tf's nlb_tls_enabled) — API Gateway
   # only needs to validate the NLB's cert when the NLB actually presents one.
   tls_server_name = local.backend_route53 != null ? local.backend_route53.domain_name : ""
 
   tags = var.tags
+}
+
+# secrets/lambda dropped their enable_authorizer count (e15abae) but existing state still has
+# module.secrets[0]/module.lambda[0] — without these, terraform plans a destroy-then-create that
+# cycles through api_gateway's authorizer_lambda_invoke_arn dependency. Safe to remove once every
+# environment's state has been migrated (or recreated) past the count -> no-count change.
+moved {
+  from = module.secrets[0]
+  to   = module.secrets
+}
+
+moved {
+  from = module.lambda[0]
+  to   = module.lambda
 }
 
 # Salt for Thor.Authorizer's PBKDF2 API-key hashing — value set out-of-band, not by Terraform.
