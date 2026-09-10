@@ -76,7 +76,7 @@ jobs:
       - uses: ./.github/actions/terragrunt-setup
         with:
           role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
-          region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          region: ${{ vars.AWS_REGION || 'us-west-2' }}
           working_directory: infra/envs/${{ needs.context.outputs.environment }}
 
       - name: terragrunt validate
@@ -118,7 +118,7 @@ jobs:
       - uses: ./.github/actions/terragrunt-setup
         with:
           role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
-          region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          region: ${{ vars.AWS_REGION || 'us-west-2' }}
           working_directory: infra/envs/${{ needs.context.outputs.environment }}
 
       # Absolute /tmp path — terragrunt runs terraform from a hashed cache dir, not this working-directory.
@@ -198,7 +198,7 @@ jobs:
       - uses: ./.github/actions/terragrunt-setup
         with:
           role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
-          region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          region: ${{ vars.AWS_REGION || 'us-west-2' }}
           working_directory: infra/envs/${{ needs.context.outputs.environment }}
 
       # /tmp, matching where plan-terragrunt wrote it.
@@ -243,12 +243,12 @@ jobs:
         id: ecr
         with:
           role_arn: ${{ needs.context.outputs.environment == 'dev' && vars.DEV_AWS_ROLE_ARN || needs.context.outputs.environment == 'qa' && vars.QA_AWS_ROLE_ARN || needs.context.outputs.environment == 'prod' && vars.PROD_AWS_ROLE_ARN }}
-          region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          region: ${{ vars.AWS_REGION || 'us-west-2' }}
 
       # linux/amd64: Fargate task defs default to X86_64. Only pushes to repos with zero images — never overwrites a real :latest.
       - name: Seed any empty ECR repo with the placeholder image
         env:
-          AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+          AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
           ENVIRONMENT: ${{ needs.context.outputs.environment }}
           REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |

@@ -106,8 +106,13 @@ inputs = {
           domain_name = "api.qa.cndemo.com"
         }
         # NLB's TLS listener cert (re-encryption) — CN/SNI only, no DNS record needed.
+        # The one certificate here that is NOT us-east-1: an NLB can only attach a certificate
+        # issued in its own region, so this one follows the stack (scope = "regional") while the
+        # two CloudFront certs above stay in us-east-1. No region literal either way — scope
+        # resolves against var.aws_region in infra/src/main.tf.
         backend = {
           domain_name = "backend.qa.cndemo.com"
+          scope       = "regional"
         }
       }
     }

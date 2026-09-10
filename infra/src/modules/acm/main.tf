@@ -1,7 +1,16 @@
 # DNS validation only — email validation can't be automated, which defeats
 # the point of this module.
+#
+# Certificates here span two regions (each entry carries its own; see variables.tf). The Route53
+# records that prove them do not: Route53 is global, so one zone validates certificates in any
+# region, and nothing below needs a region argument.
 resource "aws_acm_certificate" "this" {
   for_each = var.certificates
+
+  # Per-certificate, since one environment needs certificates in two different regions at once —
+  # us-east-1 for CloudFront's, the stack's own region for the NLB's. Route53 is global, so the
+  # validation records below are unaffected by this and cross-region validation just works.
+  region = each.value.region
 
   domain_name = each.value.domain_name
   # The wildcard is opt-in per certificate, not automatic: a certificate for one exact hostname
@@ -78,6 +87,10 @@ resource "aws_route53_record" "validation" {
 
 resource "aws_acm_certificate_validation" "this" {
   for_each = aws_acm_certificate.this
+
+  # Has to be issued against the same regional ACM endpoint that holds the certificate, or the
+  # validation call goes looking for an ARN the endpoint has never heard of.
+  region = var.certificates[each.key].region
 
   certificate_arn = each.value.arn
 

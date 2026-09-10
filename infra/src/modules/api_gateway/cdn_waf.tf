@@ -1,7 +1,14 @@
-# CloudFront-scoped WAF ACLs are created via the global CloudFront API but always through the us-east-1 region
-# specifically — this repo's every environment already runs in us-east-1 (root.hcl's account_map), so no second
-# provider alias is needed here, same as modules/frontend's.
+# Pinned to us-east-1 for the same reason as modules/frontend's: a CLOUDFRONT-scoped WAF ACL is global
+# once created, but only the us-east-1 endpoint will create one — every other region rejects the scope
+# ("WAFInvalidParameterException: The scope is not valid., parameter: CLOUDFRONT"). Note this is the
+# only resource in this module that leaves the stack's region; the API itself and its NLB integration
+# stay regional, and the distribution in cdn.tf is global in its own right.
+#
+# Its visibility_config metrics therefore land in us-east-1 CloudWatch, not with the rest of this
+# environment's — including the rate-limit metric, which is the one most likely to be alarmed on.
 resource "aws_wafv2_web_acl" "api" {
+  region = var.global_region
+
   name        = "${local.cdn_name_prefix}-waf"
   description = "WAF for the thor-${var.environment} API CloudFront distribution"
   scope       = "CLOUDFRONT"

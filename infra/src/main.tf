@@ -111,11 +111,15 @@ module "acm" {
 
   source = "./modules/acm"
 
+  # scope resolves to a real region here, at the boundary, so nothing below the root module and
+  # nothing in any environment's terragrunt.hcl carries a region literal — moving var.aws_region
+  # moves the regional certificates with it, and leaves the CloudFront ones where AWS demands.
   certificates = {
     for key, cert in local.route53_certificates_flat : key => {
       domain_name               = cert.domain_name
       subject_alternative_names = cert.subject_alternative_names
       include_wildcard          = cert.include_wildcard
+      region                    = cert.scope == "regional" ? var.aws_region : var.global_region
     }
   }
 
@@ -138,7 +142,8 @@ locals {
   } : null
 
   # Same pattern as frontend_route53 above, for the CloudFront distribution fronting the API.
-  # Its certificate has to be us-east-1 like any CloudFront cert — see api_cdn_certificate_key.
+  # Its certificate is issued in us-east-1 like any CloudFront cert, while this stack itself runs
+  # in us-west-2 — carried by that certificate's scope = "global", see api_cdn_certificate_key.
   api_cdn_route53 = var.enable_route53 && var.api_cdn_certificate_key != "" ? {
     domain_name     = local.route53_certificates_flat[var.api_cdn_certificate_key].domain_name
     certificate_arn = module.acm[0].certificate_arns[var.api_cdn_certificate_key]
@@ -147,6 +152,8 @@ locals {
 
   # Same pattern again, for the NLB's TLS listener (NLB <-> ECS re-encryption) and API Gateway's
   # matching tls_config — both need to agree on whether TLS is on, so both read this same local.
+  # Unlike the two above, this certificate is issued in the stack's own region (scope = "regional"):
+  # a load balancer can only attach a certificate from the region it lives in.
   backend_route53 = var.enable_route53 && var.backend_certificate_key != "" ? {
     domain_name     = local.route53_certificates_flat[var.backend_certificate_key].domain_name
     certificate_arn = module.acm[0].certificate_arns[var.backend_certificate_key]
@@ -163,6 +170,9 @@ module "frontend" {
   environment = var.environment
   price_class = var.frontend_price_class
 
+  # Only for the module's CLOUDFRONT-scoped WAF ACL, which AWS will not create anywhere else.
+  global_region = var.global_region
+
   domain_name         = local.frontend_route53 != null ? local.frontend_route53.domain_name : ""
   acm_certificate_arn = local.frontend_route53 != null ? local.frontend_route53.certificate_arn : ""
   zone_id             = local.frontend_route53 != null ? local.frontend_route53.zone_id : ""
@@ -178,9 +188,12 @@ module "api_gateway" {
 
   source = "./modules/api_gateway"
 
-  environment        = var.environment
-  service_name       = local.public_service_name
+  environment  = var.environment
+  service_name = local.public_service_name
+  # aws_region builds the execute-api origin hostname and follows the stack; global_region is only
+  # for the CLOUDFRONT-scoped WAF ACL, which AWS will not create anywhere but us-east-1.
   aws_region         = var.aws_region
+  global_region      = var.global_region
   nlb_listener_arn   = module.ecs.nlb_listener_arns[local.public_service_name]
   vpc_id             = local.vpc_id
   private_subnet_ids = local.private_subnet_ids
@@ -188,8 +201,8 @@ module "api_gateway" {
   authorizer_lambda_invoke_arn    = module.lambda.lambda_invoke_arn
   authorizer_lambda_function_name = module.lambda.lambda_function_name
 
-  # The public hostname belongs to the CloudFront distribution, so its certificate has to be
-  # us-east-1 like any CloudFront cert — see api_cdn_certificate_key.
+  # The public hostname belongs to the CloudFront distribution, so its certificate is issued in
+  # us-east-1 rather than this stack's own region — see api_cdn_certificate_key.
   domain_name         = local.api_cdn_route53 != null ? local.api_cdn_route53.domain_name : ""
   acm_certificate_arn = local.api_cdn_route53 != null ? local.api_cdn_route53.certificate_arn : ""
   zone_id             = local.api_cdn_route53 != null ? local.api_cdn_route53.zone_id : ""

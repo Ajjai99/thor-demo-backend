@@ -104,3 +104,8 @@ variable "tls_server_name" {
   description = "Hostname to verify against the NLB listener's cert (its CN/SAN) and send via SNI, for NLB <-> ECS TLS re-encryption. \"\" (default) leaves the integration on plain HTTP, matching the NLB's own default (non-TLS) listener — must agree with whatever set the NLB's cert (main.tf's backend_route53)."
   default     = ""
 }
+
+variable "global_region" {
+  type        = string
+  description = "Region the CLOUDFRONT-scoped WAFv2 web ACL is created through (us-east-1). Not this module's own region: see cdn_waf.tf."
+}

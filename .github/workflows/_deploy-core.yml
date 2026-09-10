@@ -55,7 +55,7 @@ jobs:
       run:
         working-directory: backend/services/${{ inputs.service }}
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
     outputs:
       digest: ${{ steps.digest.outputs.ref }}
       commit_id: ${{ github.sha }}
@@ -160,7 +160,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: qa-candidate
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
     outputs:
       digest: ${{ steps.manifest.outputs.digest }}
       tag: ${{ steps.manifest.outputs.tag }}
@@ -242,7 +242,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: qa
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
     outputs:
       # Re-exported so this workflow's own output stays blank until qa-promote (the approval-gated job) completes, not just qa-deploy.
       digest: ${{ needs['qa-deploy'].outputs.digest }}
@@ -270,7 +270,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: prod
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
     outputs:
       digest: ${{ steps.manifest.outputs.digest }}
       commit_id: ${{ steps.manifest.outputs.tag }}

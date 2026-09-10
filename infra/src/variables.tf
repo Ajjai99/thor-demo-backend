@@ -10,7 +10,13 @@ variable "account_id" {
 
 variable "aws_region" {
   type        = string
-  description = "AWS region this environment deploys into — root.hcl's account_map, supplied via its inputs block. Same value the generated provider block is already configured with; passed through explicitly so modules can reference it (e.g. for awslogs-region in a container's logConfiguration) without a live aws_region data source lookup."
+  description = "AWS region this environment's regional resources deploy into (us-west-2) — root.hcl's account_map, supplied via its inputs block. Same value the generated provider block is already configured with; passed through explicitly so modules can reference it (e.g. for awslogs-region in a container's logConfiguration) without a live aws_region data source lookup."
+}
+
+variable "global_region" {
+  type        = string
+  description = "The region AWS requires for CloudFront-adjacent resources, regardless of where var.aws_region puts the rest of the stack. Two things depend on it: ACM certificates a CloudFront distribution serves (CloudFront reads certs only from us-east-1) and CLOUDFRONT-scoped WAFv2 web ACLs (only creatable through the us-east-1 endpoint — every other region rejects the scope with WAFInvalidParameterException). Not a tunable: set to anything but us-east-1 and both break."
+  default     = "us-east-1"
 }
 
 # --- network ---
@@ -125,9 +131,31 @@ variable "hosted_zones" {
       # Adds "*.<domain_name>" alongside domain_name. Off by default: a certificate naming one
       # exact host has no use for its wildcard, and requesting it only adds a validation record.
       include_wildcard = optional(bool, false)
+      # Which region ACM issues this certificate in, named by what consumes it rather than by a
+      # region literal — so nothing here has to be touched when var.aws_region moves.
+      #
+      #   "global"   -> var.global_region (us-east-1). For certificates a CloudFront distribution
+      #                 serves, which CloudFront will only read from us-east-1.
+      #   "regional" -> var.aws_region. For certificates a regional resource attaches, above all
+      #                 the NLB's TLS listener: an ACM certificate can only be attached by a load
+      #                 balancer in its own region, so a us-east-1 cert simply cannot be used by a
+      #                 us-west-2 NLB.
+      #
+      # Defaults to "global" because most certificates here front CloudFront; the NLB's is the
+      # exception and says so explicitly in each environment's terragrunt.hcl.
+      scope = optional(string, "global")
     }))
   }))
   default = {}
+
+  validation {
+    condition = alltrue([
+      for zone in values(var.hosted_zones) : alltrue([
+        for cert in values(zone.certificates) : contains(["global", "regional"], cert.scope)
+      ])
+    ])
+    error_message = "Each certificate's scope must be either \"global\" (us-east-1, for CloudFront) or \"regional\" (this stack's own region, for the NLB)."
+  }
 }
 
 # --- frontend (static SPA: S3 + CloudFront) ---
@@ -146,13 +174,13 @@ variable "frontend_price_class" {
 
 variable "frontend_certificate_key" {
   type        = string
-  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/frontend\") the frontend distribution's custom domain + cert come from. \"\" (default) leaves the frontend on CloudFront's default certificate, no alias record created."
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/frontend\") the frontend distribution's custom domain + cert come from. That certificate must be scope = \"global\" (us-east-1), as CloudFront requires. \"\" (default) leaves the frontend on CloudFront's default certificate, no alias record created."
   default     = ""
 }
 
 variable "backend_certificate_key" {
   type        = string
-  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/backend\") the NLB's TLS listener cert comes from, for NLB <-> ECS re-encryption. \"\" (default) leaves the NLB on plain TCP and the app on plain HTTP:8080, today's behavior — set only where the re-encryption path is actually wanted (dev only for now)."
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/backend\") the NLB's TLS listener cert comes from, for NLB <-> ECS re-encryption. That certificate must be scope = \"regional\": a load balancer can only attach a certificate issued in its own region. \"\" (default) leaves the NLB on plain TCP and the app on plain HTTP:8080, today's behavior — set only where the re-encryption path is actually wanted (dev only for now)."
   default     = ""
 }
 
@@ -160,7 +188,7 @@ variable "backend_certificate_key" {
 
 variable "api_cdn_certificate_key" {
   type        = string
-  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/api\") the API's public hostname + cert come from. That certificate must be in us-east-1, which CloudFront requires of every distribution regardless of this stack's own region. \"\" (default) leaves the distribution on its *.cloudfront.net name, no alias record created."
+  description = "Which entry in the flattened hosted_zones certificates (key format \"<zone_key>/<cert_key>\", e.g. \"thor/api\") the API's public hostname + cert come from. That certificate must be scope = \"global\" (us-east-1), which CloudFront requires of every distribution regardless of this stack's own region. \"\" (default) leaves the distribution on its *.cloudfront.net name, no alias record created."
   default     = ""
 }
 

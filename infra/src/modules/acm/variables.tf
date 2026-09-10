@@ -6,6 +6,14 @@ variable "certificates" {
     # Adds "*.<domain_name>" alongside domain_name. Worth it for a zone apex fronting several
     # hostnames; pointless for a certificate naming one exact host, so it defaults off.
     include_wildcard = optional(bool, false)
+    # The region this one certificate is issued in. Required, and per-certificate rather than
+    # per-module, because a single environment genuinely needs both: us-east-1 for anything
+    # CloudFront serves, the stack's own region for anything an NLB attaches. The caller resolves
+    # it (see the root main.tf's "global"/"regional" scope) — this module just honours it.
+    #
+    # Per-resource region, not a second aliased provider: this resource is for_each'd, and a
+    # provider alias can't vary per key, so aliasing would force splitting the module in two.
+    region = string
   }))
   default = {}
 }
